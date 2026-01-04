@@ -1,0 +1,53 @@
+import express from "express";
+import cors from "cors";
+
+import authRoutes from "./routes/auth/index.js";
+import adminRoutes from "./routes/admin/index.js";
+import donationRoutes from "./routes/donations.js";
+import eventRoutes from "./routes/events.js";
+import pastorRoutes from "./routes/pastor/index.js";
+import profileRoutes from "./routes/profile/index.js";
+
+import requireAuth from "./middleware/requireAuth.js";
+import requireAdmin from "./middleware/requireAdmin.js";
+
+import { supabase } from "./supabaseClient.js";
+
+const app = express();
+
+// global middleware
+app.use(cors());
+app.use(express.json());
+
+// attach supabase client to every request
+app.use((req, res, next) => {
+  req.supabase = supabase;
+  next();
+});
+
+/**
+ * PUBLIC ROUTES
+ */
+app.use("/auth", authRoutes);
+
+/**
+ * AUTHENTICATED ROUTES
+ */
+app.use("/profile", requireAuth, profileRoutes);
+app.use("/donations", requireAuth, donationRoutes);
+app.use("/events", requireAuth, eventRoutes);
+app.use("/pastor", requireAuth, pastorRoutes);
+
+/**
+ * ADMIN ROUTES
+ */
+app.use("/admin", requireAuth, requireAdmin, adminRoutes);
+
+/**
+ * Health check
+ */
+app.get("/", (req, res) => {
+  res.json({ status: "API running" });
+});
+
+export default app;

@@ -1,12 +1,25 @@
-// routes/auth/index.js
-import express from 'express';
-import login from './login.js';
-import register from './register.js';
+import express from "express";
+
+import login from "./login.js";
+import register from "./register.js";
+import callback from "./callback.js";
+import me from "./me.js";
+import logout from "./logout.js";
+
+import resetPasswordConfirm from "./reset-password-confirm.js";
+import changePassword from "./change-password.js";
+import resetPassword from "./reset-password.js";
 
 const router = express.Router();
 
-// Mount login and register routers
-router.use('/login', login);
-router.use('/register', register);
+router.use("/login", login);
+router.use("/register", register);
+router.use("/callback", callback);
+router.use("/me", me);
+router.use("/logout", logout);
+
+router.use("/reset-password-confirm", resetPasswordConfirm);
+router.use("/change-password", changePassword);
+router.use("/reset-password", resetPassword);
 
 export default router;
