@@ -7,7 +7,7 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-export async function requireAdmin(req, res, next) {
+export default async function requireAdmin(req, res, next) {
   try {
     // 1️⃣ authMiddleware must already have run
     if (!req.user) {

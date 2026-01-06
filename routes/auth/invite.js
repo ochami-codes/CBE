@@ -3,8 +3,8 @@ import bcrypt from "bcryptjs";
 import crypto from "crypto";
 
 import { authMiddleware } from "../../middleware/authMiddleware.js";
-import { requireVerified } from "../../middleware/verified.js";
-import { requireAdmin } from "../../middleware/requireAdmin.js";
+import { requireVerified } from  "../../middleware/verified.js";
+import  requireAdmin  from "../../middleware/requireAdmin.js";
 import { sendInviteEmail } from "../../utils/email.js"; // Resend helper
 
 const router = express.Router();

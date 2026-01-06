@@ -1,6 +1,6 @@
 import express from "express";
 import jwt from "jsonwebtoken";
-import { sendEmail } from "../../utils/email.js";
+import { sendInviteEmail } from "../../utils/email.js";
 
 const router = express.Router();
 
