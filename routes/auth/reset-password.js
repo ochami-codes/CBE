@@ -1,4 +1,7 @@
 import express from "express";
+import jwt from "jsonwebtoken";
+import { sendEmail } from "../../utils/email.js";
+
 const router = express.Router();
 
 // POST /auth/reset-password
@@ -6,7 +9,9 @@ router.post("/", async (req, res) => {
   const supabase = req.supabase;
   const { email } = req.body;
 
-  if (!email) return res.status(400).json({ message: "Email is required." });
+  if (!email) {
+    return res.status(400).json({ message: "Email is required" });
+  }
 
   try {
     // Fetch user by email
@@ -16,21 +21,43 @@ router.post("/", async (req, res) => {
       .eq("email", email)
       .single();
 
-    if (error || !profile) return res.status(400).json({ message: "User not found." });
+    // Always respond the same (avoid email enumeration)
+    if (error || !profile) {
+      return res.json({
+        message: "If the email exists, a reset link has been sent.",
+      });
+    }
 
-    // TODO: generate a reset token (JWT valid for short time)
-    const resetToken = require("jsonwebtoken").sign(
+    // Generate short-lived reset token
+    const resetToken = jwt.sign(
       { sub: profile.id },
       process.env.JWT_SECRET,
       { expiresIn: "15m" }
     );
 
-    // In a real app: send email with link like `${FRONTEND_URL}/reset-password?token=${resetToken}`
-    // For now, just return token for testing
-    res.json({ message: "Password reset token generated.", token: resetToken });
+    const resetLink = `${process.env.FRONTEND_URL}/reset-password-confirm?token=${resetToken}`;
+
+    // Send reset email
+    await sendEmail({
+      to: profile.email,
+      subject: "Reset your password",
+      html: `
+        <p>You requested a password reset.</p>
+        <p>Click the link below to set a new password:</p>
+        <p>
+          <a href="${resetLink}">Reset Password</a>
+        </p>
+        <p>This link expires in 15 minutes.</p>
+        <p>If you did not request this, you can safely ignore this email.</p>
+      `,
+    });
+
+    res.json({
+      message: "If the email exists, a reset link has been sent.",
+    });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: err.message });
+    console.error("Reset password error:", err);
+    res.status(500).json({ message: "Server error" });
   }
 });
 
