@@ -7,7 +7,7 @@ import me from "./me.js";
 import logout from "./logout.js";
 import adminInvite from "./invite.js";
 import verifyEmail from "./verify-email.js";
-import resendVerification from "/.resend-verification.js";
+import resendVerification from "./resend-verification.js";
 import resetPasswordConfirm from "./reset-password-confirm.js";
 import changePassword from "./change-password.js";
 import resetPassword from "./reset-password.js";
