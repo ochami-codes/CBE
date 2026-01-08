@@ -26,7 +26,7 @@ router.get("/callback", async (req, res) => {
     // 2️⃣ Fetch profile from your DB
     const { data: profile, error: profileError } = await req.supabase
       .from("profiles")
-      .select("id, email, role_id, church_id, is_verified")
+      .select("id, email, role_id, church_id, email_confirmed_at")
       .eq("id", userId)
       .single();
 
@@ -55,7 +55,7 @@ router.get("/callback", async (req, res) => {
       return res.redirect(`${FRONTEND_URL}/reset-password-confirm?token=${access_token}`);
     }
 
-    if (!profile.is_verified) {
+    if (!profile.email_confirmed_at) {
       return res.redirect(`${FRONTEND_URL}/verify-email-info`);
     }
 

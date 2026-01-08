@@ -12,7 +12,7 @@ router.get("/", authMiddleware, async (req, res) => {
 
     const { data: profile, error } = await supabase
       .from("profiles")
-      .select("id, email, role_id, church_id, is_verified")
+      .select("id, email, role_id, church_id, email_confirmed_at")
       .eq("id", userId)
       .single();
 

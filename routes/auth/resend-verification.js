@@ -17,7 +17,7 @@ router.post("/", async (req, res) => {
     // Find user profile
     const { data: profile, error } = await supabase
       .from("profiles")
-      .select("id, email, is_verified")
+      .select("id, email, email_confirmed_at")
       .eq("email", email)
       .single();
 
@@ -29,7 +29,7 @@ router.post("/", async (req, res) => {
     }
 
     // Already verified
-    if (profile.is_verified) {
+    if (profile.email_confirmed_at) {
       return res.json({
         message: "If the email exists, a verification link has been sent.",
       });

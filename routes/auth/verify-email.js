@@ -18,7 +18,7 @@ router.get("/", async (req, res) => {
     // 1️⃣ Find user by email_token
     const { data: user, error } = await supabase
       .from("profiles")
-      .select("id, email, role_id, church_id, is_verified")
+      .select("id, email, role_id, church_id, email_confirmed_at")
       .eq("email_token", token)
       .single();
 
@@ -29,7 +29,7 @@ router.get("/", async (req, res) => {
     }
 
     // 2️⃣ If already verified
-    if (user.is_verified) {
+    if (user.email_confirmed_at) {
       return res.status(200).json({
         message: "Email already verified. You can sign in.",
       });
@@ -39,7 +39,7 @@ router.get("/", async (req, res) => {
     const { error: updateError } = await supabase
       .from("profiles")
       .update({
-        is_verified: true,
+        email_confirmed: true,
         email_token: null,
       })
       .eq("id", user.id);
@@ -52,7 +52,7 @@ router.get("/", async (req, res) => {
         sub: user.id,
         role_id: user.role_id,
         church_id: user.church_id,
-        is_verified: true,
+        email_confirmed_at: true,
       },
       process.env.JWT_SECRET,
       { expiresIn: "1h" }

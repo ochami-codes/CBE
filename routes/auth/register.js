@@ -65,7 +65,7 @@ router.post("/", async (req, res) => {
           password_hash,
           role_id: role.id,
           church_id,
-          is_verified: false, // must verify email
+          email_confirmed_at: false, // must verify email
         },
       ])
       .select("*")

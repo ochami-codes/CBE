@@ -21,7 +21,7 @@ router.post("/", async (req, res) => {
         id,
         email,
         password_hash,
-        is_verified,
+        email_confirmed_at,
         church_id,
         roles ( id, name )
       `)
@@ -33,7 +33,7 @@ router.post("/", async (req, res) => {
     }
 
     // 2️⃣ Block unverified emails
-    if (!profile.is_verified) {
+    if (!profile.email_confirm_at) {
       return res.status(403).json({
         message: "Please verify your email before logging in",
       });

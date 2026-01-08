@@ -76,7 +76,7 @@ router.post(
             role_id,
             church_id: churchId,
             invited_by: adminId,
-            is_verified: false,
+            email_confirmed_at: false,
             email_token,
           },
         ])
@@ -97,7 +97,7 @@ router.post(
           email: profile.email,
           role_id: profile.role_id,
           church_id: profile.church_id,
-          is_verified: profile.is_verified,
+          email_confirm_at: profile.email_confirm_at,
         },
       });
     } catch (err) {

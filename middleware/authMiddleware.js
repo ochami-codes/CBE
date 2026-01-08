@@ -2,47 +2,55 @@ import { createClient } from "@supabase/supabase-js";
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY // server-only key
+  process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
 export async function authMiddleware(req, res, next) {
   try {
     const authHeader = req.headers.authorization;
-    if (!authHeader?.startsWith("Bearer ")) {
+
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
       return res.status(401).json({ message: "Missing or invalid token" });
     }
 
     const token = authHeader.split(" ")[1];
 
-    // 1️⃣ Verify JWT via Supabase Auth
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+    /* 1️⃣ Verify JWT */
+    const {
+      data: { user },
+      error: authError
+    } = await supabase.auth.getUser(token);
+
     if (authError || !user) {
-      return res.status(401).json({ message: "Invalid token" });
+      return res.status(401).json({ message: "Invalid or expired token" });
     }
 
-    // 2️⃣ Fetch user profile from your profiles table
+    /* 2️⃣ Fetch user profile */
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
-      .select("id, role_id, church_id, is_verified, email")
-      .eq("email", user.email)
+      .select("id, role_id, church_id, email_confirmed_at, email")
+      .eq("id", user.id) // ✅ IMPORTANT FIX
       .single();
 
     if (profileError || !profile) {
-      return res.status(401).json({ message: "Unauthorized: profile not found" });
+      return res.status(401).json({ message: "Profile not found" });
     }
 
-    // 3️⃣ Attach verified user info to req.user
+    if (!profile.email_confirmed_at) {
+      return res.status(403).json({ message: "Account not verified" });
+    }
+
+    /* 3️⃣ Attach user */
     req.user = {
       id: profile.id,
       email: profile.email,
       role_id: profile.role_id,
       church_id: profile.church_id,
-      is_verified: profile.is_verified,
     };
 
     next();
   } catch (err) {
     console.error("Auth middleware error:", err);
-    res.status(500).json({ message: "Server error" });
+    return res.status(500).json({ message: "Server error" });
   }
 }

@@ -5,8 +5,8 @@ export function requireVerified(req, res, next) {
       return res.status(401).json({ message: "Unauthorized" });
     }
 
-    // 2️⃣ Check is_verified flag
-    if (!req.user.is_verified) {
+    // 2️⃣ Check iemaiil_confirmed_at e flag
+    if (!req.user.email_confirmed_at) {
       return res.status(403).json({
         message: "Please verify your email before accessing this resource",
       });

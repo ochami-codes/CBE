@@ -8,10 +8,11 @@ import donationRoutes from "./routes/donations.js";
 import eventRoutes from "./routes/events.js";
 import pastorRoutes from "./routes/pastor/index.js";
 import profileRoutes from "./routes/profile/index.js";
-
+import churchRoutes from "./routes/churches.js";
+import memberRoutes from "./routes/members.js";
 import requireAuth from "./middleware/requireAuth.js";
 import requireAdmin from "./middleware/requireAdmin.js";
-
+import attendanceRoutes from "./routes/attendance.js";
 import { supabase } from "./supabaseClient.js";
 
 const app = express();
@@ -30,7 +31,7 @@ app.use((req, res, next) => {
  * PUBLIC ROUTES
  */
 app.use("/auth", authRoutes);
-
+app.use("/churches", churchRoutes);
 /**
  * AUTHENTICATED ROUTES
  */
@@ -38,7 +39,8 @@ app.use("/profile", requireAuth, profileRoutes);
 app.use("/donations", requireAuth, donationRoutes);
 app.use("/events", requireAuth, eventRoutes);
 app.use("/pastor", requireAuth, pastorRoutes);
-
+app.use("/members", memberRoutes);
+app.use("/attendance", attendanceRoutes);
 /**
  * ADMIN ROUTES
  */
