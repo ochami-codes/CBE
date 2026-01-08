@@ -1,76 +1,95 @@
 import express from "express";
+import { authMiddleware } from "../../middleware/authMiddleware.js";
 
 const router = express.Router();
 
-// GET /profile
-router.get("/", async (req, res) => {
+/* --------------------------------------------------
+   GET /profile
+-------------------------------------------------- */
+router.get("/", authMiddleware, async (req, res) => {
   try {
-    const supabase = req.supabase;
     const userId = req.user.id;
+    const churchId = req.user.church_id;
 
-    // Fetch profile
-    const { data: profile, error: profileError } = await supabase
+    // 1️⃣ Profile + role + church
+    const { data: profile, error: profileError } = await req.supabase
       .from("profiles")
-      .select("full_name, phone")
+      .select(`
+        id,
+        full_name,
+        phone,
+        email,
+        roles ( id, name ),
+        churches ( id, name, logo )
+      `)
       .eq("id", userId)
       .single();
 
     if (profileError) throw profileError;
 
-    // Fetch contributions
-    const { data: contributions, error: contribError } = await supabase
-      .from("contributions")
-      .select("type, amount")
-      .eq("user_id", userId);
+    // 2️⃣ Contribution summary (ledger-based)
+    const { data: rows, error: ledgerError } = await req.supabase
+      .from("ledger")
+      .select("account, amount")
+      .eq("member_id", userId)
+      .eq("church_id", churchId);
 
-    if (contribError) throw contribError;
+    if (ledgerError) throw ledgerError;
 
-    // Aggregate contributions
-    const summary = {
-      tithes: 0,
-      offerings: 0,
-      campOfferings: 0,
-      churchDevelopment: 0,
-    };
-
-    contributions.forEach((c) => {
-      if (summary[c.type] !== undefined) {
-        summary[c.type] += Number(c.amount || 0);
-      }
+    const contributions = {};
+    rows.forEach(r => {
+      contributions[r.account] =
+        (contributions[r.account] || 0) + Number(r.amount);
     });
 
     res.json({
       profile: {
         fullName: profile.full_name,
         phone: profile.phone,
-        email: req.user.email,
+        email: profile.email,
+        role: profile.roles?.name,
+        church: profile.churches,
       },
-      contributions: summary,
+      contributions,
     });
+
   } catch (err) {
-    console.error("Profile fetch error:", err);
-    res.status(500).json({ message: err.message });
+    console.error("Profile GET error:", err);
+    res.status(500).json({ message: "Failed to load profile" });
   }
 });
 
-// PUT /profile
-router.put("/", async (req, res) => {
+/* --------------------------------------------------
+   PUT /profile
+-------------------------------------------------- */
+router.put("/", authMiddleware, async (req, res) => {
   try {
-    const { fullName, phone } = req.body;
+    const userId = req.user.id;
+    const { fullName, phone, email } = req.body;
 
-    const { error } = await req.supabase
+    // 1️⃣ Update profile table
+    const { error: profileError } = await req.supabase
       .from("profiles")
       .update({
         full_name: fullName,
         phone,
       })
-      .eq("id", req.user.id);
+      .eq("id", userId);
 
-    if (error) throw error;
+    if (profileError) throw profileError;
+
+    // 2️⃣ Update email via Supabase Auth (auto verification)
+    if (email && email !== req.user.email) {
+      const { error: authError } =
+        await req.supabase.auth.updateUser({ email });
+
+      if (authError) throw authError;
+    }
 
     res.json({ success: true });
+
   } catch (err) {
-    console.error("Profile update error:", err);
+    console.error("Profile UPDATE error:", err);
     res.status(500).json({ message: err.message });
   }
 });
