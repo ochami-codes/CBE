@@ -1,7 +1,7 @@
+// backend/routes/auth/register.js
 import express from "express";
+import { supabase } from "../../supabaseClient.js"; // service role client
 import crypto from "crypto";
-import { supabase } from "../../supabaseClient.js";
-import { sendInviteEmail } from "../../utils/email.js";
 
 const router = express.Router();
 
@@ -14,110 +14,83 @@ router.post("/", async (req, res) => {
   }
 
   try {
-    /* -------------------------------------------------
-       2️⃣ Find or create church
-    ------------------------------------------------- */
+    // 1️⃣ Ensure church exists
     let { data: church } = await supabase
       .from("churches")
-      .select("id")
+      .select("*")
       .eq("name", church_name.trim())
       .single();
 
     if (!church) {
-      const { data: newChurch, error: churchError } =
-        await supabase
-          .from("churches")
-          .insert({ name: church_name.trim() })
-          .select("id")
-          .single();
-
-      if (churchError) throw churchError;
+      const { data: newChurch } = await supabase
+        .from("churches")
+        .insert([{ name: church_name.trim() }])
+        .select("*")
+        .single();
       church = newChurch;
     }
 
-    /* -------------------------------------------------
-       3️⃣ Get default role (Member)
-    ------------------------------------------------- */
-    const { data: role, error: roleError } = await supabase
+    // 2️⃣ Determine role
+    const { count } = await supabase
+      .from("profiles")
+      .select("id", { count: "exact" })
+      .eq("church_id", church.id);
+
+    const role_name = count === 0 ? "Admin" : "Member";
+
+    const { data: role } = await supabase
       .from("roles")
-      .select("id")
-      .eq("name", "Member")
+      .select("*")
+      .eq("name", role_name)
       .single();
 
-    if (roleError || !role) {
-      return res.status(500).json({ error: "Default role not found" });
-    }
+    if (!role) throw new Error("Role not found");
 
-    /* -------------------------------------------------
-       4️⃣ Create Supabase Auth user (THIS IS CRITICAL)
-    ------------------------------------------------- */
-     const { data: authData, error: authError } =
-  await supabase.auth.admin.createUser({
-    email: email.trim(),
-    password,
-    email_confirm: false,
-  });
-
-if (authError) {
-  // Email already exists
-  if (
-    authError.message?.toLowerCase().includes("already") ||
-    authError.status === 400
-  ) {
-    return res.status(409).json({
-      error: "An account with this email already exists",
+    // 3️⃣ Create the Auth user
+    const { data: authUser, error: authError } = await supabase.auth.admin.createUser({
+      email,
+      password,
+      email_confirm: false,
     });
-  }
-  throw authError;
-}
-    /* -------------------------------------------------
-       5️⃣ Create profile linked to auth.users
-    ------------------------------------------------- */
+
+    if (authError) throw authError;
+
+    const userId = authUser.id;
+
+    // 4️⃣ Create profile (without password_hash)
     const email_token = crypto.randomBytes(32).toString("hex");
 
-    const { error: profileError } = await supabase
+    const { data: profile, error: profileError } = await supabase
       .from("profiles")
-      .insert({
-        id: userId,              // 🔑 FK → auth.users.id
-        email: email.trim(),
-        full_name: full_name.trim(),
-        role_id: role.id,
-        church_id: church.id,
-        email_token,
-      });
+      .insert([
+        {
+          id: userId, // must match auth user
+          full_name,
+          email,
+          role_id: role.id,
+          church_id: church.id,
+          email_token,
+          email_confirmed_at: null, // still falsey until verified
+        },
+      ])
+      .select("*")
+      .single();
 
     if (profileError) throw profileError;
 
-    /* -------------------------------------------------
-       6️⃣ Send verification email
-    ------------------------------------------------- */
-    const verifyUrl =
-      `${process.env.FRONTEND_URL}/verify-email?token=${email_token}`;
-
-    await sendInviteEmail({
-      to: email,
-      subject: "Verify your email",
-      html: `
-        <p>Hello ${full_name},</p>
-        <p>Please verify your email by clicking the link below:</p>
-        <p><a href="${verifyUrl}">Verify Email</a></p>
-        <p>If you didn’t register, you can ignore this email.</p>
-      `,
-    });
-
-    /* -------------------------------------------------
-       ✅ Done
-    ------------------------------------------------- */
     res.status(201).json({
-      message:
-        "Registration successful! Please check your email to verify your account.",
+      message: "Registration successful! Please verify your email.",
+      user: {
+        id: profile.id,
+        email: profile.email,
+        full_name: profile.full_name,
+        role: role_name,
+        church: church.name,
+      },
     });
-
   } catch (err) {
     console.error("Registration error:", err);
-    res.status(500).json({
-      error: "Failed to create account. Please try again.",
-    });
+    res.status(500).json({ error: "Registration failed: " + err.message });
   }
 });
 
