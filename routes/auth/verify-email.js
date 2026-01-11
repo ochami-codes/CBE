@@ -1,78 +1,60 @@
 import express from "express";
-import jwt from "jsonwebtoken";
+import { supabase } from "../../supabaseClient.js";
 
 const router = express.Router();
 
 // GET /auth/verify-email?token=xxxx
 router.get("/", async (req, res) => {
-  const supabase = req.supabase;
   const { token } = req.query;
 
   if (!token) {
-    return res.status(400).json({
-      message: "Invalid or expired verification link",
-    });
+    return res.status(400).json({ error: "Invalid verification link" });
   }
 
   try {
-    // 1️⃣ Find user by email_token
-    const { data: user, error } = await supabase
+    // 1️⃣ Find profile by token
+    const { data: profile, error } = await supabase
       .from("profiles")
-      .select("id, email, role_id, church_id, email_confirmed_at")
+      .select("id, email_confirmed_at")
       .eq("email_token", token)
       .single();
 
-    if (error || !user) {
+    if (error || !profile) {
       return res.status(400).json({
-        message: "Invalid or expired verification link",
+        error: "Verification link is invalid or expired",
       });
     }
 
-    // 2️⃣ If already verified
-    if (user.email_confirmed_at) {
-      return res.status(200).json({
-        message: "Email already verified. You can sign in.",
+    // 2️⃣ Already verified
+    if (profile.email_confirmed_at) {
+      return res.json({
+        message: "Email already verified. You can log in.",
       });
     }
 
-    // 3️⃣ Mark as verified & clear token
+    // 3️⃣ Mark email as verified
     const { error: updateError } = await supabase
       .from("profiles")
       .update({
-        email_confirmed: true,
+        email_confirmed_at: true,
         email_token: null,
       })
-      .eq("id", user.id);
+      .eq("id", profile.id);
 
     if (updateError) throw updateError;
 
-    // 4️⃣ OPTIONAL: auto-login token (remove if you prefer manual login)
-    const authToken = jwt.sign(
-      {
-        sub: user.id,
-        role_id: user.role_id,
-        church_id: user.church_id,
-        email_confirmed_at: true,
-      },
-      process.env.JWT_SECRET,
-      { expiresIn: "1h" }
-    );
+    // 4️⃣ (Optional but recommended) confirm email in Supabase Auth
+    await supabase.auth.admin.updateUserById(profile.id, {
+      email_confirm: true,
+    });
 
-    res.status(200).json({
-      message: "Email verified successfully",
-      token: authToken,
-      user: {
-        id: user.id,
-        email: user.email,
-        role_id: user.role_id,
-        church_id: user.church_id,
-      },
-    });
+    // 5️⃣ Redirect to frontend success page
+    res.redirect(
+      `${process.env.FRONTEND_URL}/email-verified`
+    );
   } catch (err) {
-    console.error("Verify email error:", err);
-    res.status(500).json({
-      message: "Server error",
-    });
+    console.error("Email verification error:", err);
+    res.status(500).json({ error: "Verification failed" });
   }
 });
 
