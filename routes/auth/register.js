@@ -15,18 +15,6 @@ router.post("/", async (req, res) => {
 
   try {
     /* -------------------------------------------------
-       1️⃣ Check if auth user already exists
-    ------------------------------------------------- */
-    const { data: existingAuth } =
-      await supabase.auth.admin.getUserByEmail(email);
-
-    if (existingAuth?.user) {
-      return res.status(409).json({
-        error: "An account with this email already exists",
-      });
-    }
-
-    /* -------------------------------------------------
        2️⃣ Find or create church
     ------------------------------------------------- */
     let { data: church } = await supabase
@@ -63,17 +51,25 @@ router.post("/", async (req, res) => {
     /* -------------------------------------------------
        4️⃣ Create Supabase Auth user (THIS IS CRITICAL)
     ------------------------------------------------- */
-    const { data: authData, error: authError } =
-      await supabase.auth.admin.createUser({
-        email: email.trim(),
-        password,
-        email_confirm: false,
-      });
+     const { data: authData, error: authError } =
+  await supabase.auth.admin.createUser({
+    email: email.trim(),
+    password,
+    email_confirm: false,
+  });
 
-    if (authError) throw authError;
-
-    const userId = authData.user.id;
-
+if (authError) {
+  // Email already exists
+  if (
+    authError.message?.toLowerCase().includes("already") ||
+    authError.status === 400
+  ) {
+    return res.status(409).json({
+      error: "An account with this email already exists",
+    });
+  }
+  throw authError;
+}
     /* -------------------------------------------------
        5️⃣ Create profile linked to auth.users
     ------------------------------------------------- */
