@@ -1,109 +1,124 @@
+// backend/routes/auth/register.js
 import express from "express";
-import { supabase } from "../../supabaseClient.js";
+import bcrypt from "bcryptjs";
 
 const router = express.Router();
 
+// POST /auth/register
 router.post("/", async (req, res) => {
+  const supabase = req.supabase; // your supabase client attached to req
+  const { email, password, full_name, church_name } = req.body;
+
+  if (!email || !password || !full_name || !church_name) {
+    return res.status(400).json({
+      error: "Email, password, full name, and church name are required",
+    });
+  }
+
   try {
-    const { full_name, email, password, church_name } = req.body;
-
-    if (!full_name || !email || !password || !church_name) {
-      return res.status(400).json({ error: "All fields are required" });
-    }
-
-    // 1️⃣ Check duplicate email
-    const { data: existingUser } = await supabase
-      .from("profiles")
-      .select("id")
-      .eq("email", email)
-      .maybeSingle();
-
-    if (existingUser) {
-      return res.status(409).json({ error: "Email already registered" });
-    }
-
-    // 2️⃣ Create Auth user
-    const { data: authData, error: authError } = await supabase.auth.admin.createUser({
+    // 1️⃣ Create Auth user first
+    const { data: authUser, error: authError } = await supabase.auth.admin.createUser({
       email,
       password,
-      email_confirm: false // Supabase sends confirmation email
+      email_confirm: false, // optional: user must verify email
     });
 
-    if (authError) {
-      return res.status(400).json({ error: authError.message });
+    if (authError || !authUser) {
+      console.error("Auth creation failed:", authError);
+      return res.status(500).json({ error: "Failed to create Auth user" });
     }
 
-    const userId = authData.user.id;
+    const userId = authUser.id;
 
-    // 3️⃣ Handle church
-    const { data: existingChurch } = await supabase
+    // 2️⃣ Check if church exists
+    let { data: church, error: churchError } = await supabase
       .from("churches")
       .select("*")
       .eq("name", church_name.trim())
-      .maybeSingle();
+      .single();
 
-    let churchId;
-    if (!existingChurch) {
-      const { data: newChurch, error: createChurchError } = await supabase
+    if (churchError || !church) {
+      // Create new church
+      const { data: newChurch, error: createError } = await supabase
         .from("churches")
         .insert([{ name: church_name.trim() }])
         .select("*")
         .single();
-
-      if (createChurchError) throw createChurchError;
-      churchId = newChurch.id;
-    } else {
-      churchId = existingChurch.id;
+      if (createError) throw createError;
+      church = newChurch;
     }
 
-    // 4️⃣ Assign role
+    const church_id = church.id;
+
+    // 3️⃣ Count existing users in this church
     const { count } = await supabase
       .from("profiles")
       .select("id", { count: "exact" })
-      .eq("church_id", churchId);
+      .eq("church_id", church_id);
 
-    const roleName = count === 0 ? "Admin" : "Member";
+    const role_name = count === 0 ? "Admin" : "Member";
 
+    // 4️⃣ Get role ID
     const { data: role, error: roleError } = await supabase
       .from("roles")
       .select("id")
-      .eq("name", roleName)
+      .eq("name", role_name)
+      .single();
+    if (roleError || !role) throw new Error("Role not found");
+
+    // 5️⃣ Hash password for internal profile storage
+    const password_hash = bcrypt.hashSync(password, 10);
+
+    // 6️⃣ Insert profile (only after Auth succeeds!)
+    const { data: profile, error: profileError } = await supabase
+      .from("profiles")
+      .insert([
+        {
+          id: userId, // use auth user ID
+          email,
+          full_name,
+          password_hash,
+          role_id: role.id,
+          church_id,
+          email_confirmed_at: false, // optional
+        },
+      ])
+      .select("*")
       .single();
 
-    if (roleError || !role) {
-      return res.status(500).json({ error: "Role not found" });
-    }
-
-    // 5️⃣ Insert profile
-    const { error: profileError } = await supabase
-      .from("profiles")
-      .insert({
-        id: userId,
-        full_name,
-        email,
-        church_id: churchId,
-        role_id: role.id
-      });
-
     if (profileError) {
-      return res.status(500).json({ error: "Profile creation failed" });
+      console.error("Profile insert failed:", profileError);
+
+      // Optional: delete auth user to avoid dangling auth accounts
+      await supabase.auth.admin.deleteUser(userId);
+
+      return res.status(500).json({
+        error: "Failed to create user profile. Auth rolled back.",
+      });
     }
 
-    // 6️⃣ Return success
-    return res.status(201).json({
-      message: "Registration successful! Check your email to confirm your account.",
-      user: {
-        id: userId,
-        full_name,
-        email,
-        role: roleName,
-        church: church_name.trim()
-      }
-    });
+    // 7️⃣ Optional: generate email verification token
+    const email_token = Math.random().toString(36).substring(2, 15);
+    await supabase
+      .from("profiles")
+      .update({ email_token })
+      .eq("id", userId);
 
+    res.status(201).json({
+      message: "Registration successful! Please verify your email.",
+      user: {
+        id: profile.id,
+        email: profile.email,
+        full_name: profile.full_name,
+        role: role_name,
+        church: church.name,
+      },
+    });
   } catch (err) {
     console.error("Registration error:", err);
-    res.status(500).json({ error: "Unexpected server error" });
+
+    // If Auth user was partially created, optionally delete it
+    return res.status(500).json({ error: "Registration failed: " + err.message });
   }
 });
 

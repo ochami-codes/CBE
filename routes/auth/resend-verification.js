@@ -1,6 +1,7 @@
+// backend/routes/auth/resend-verification.js
 import express from "express";
 import crypto from "crypto";
-import { sendInviteEmail } from "../../utils/email.js";
+import { sendInviteEmail } from "../../utils/email.js"; // adjust to your actual function
 
 const router = express.Router();
 
@@ -18,7 +19,7 @@ router.post("/", async (req, res) => {
     const { data: profile, error } = await supabase
       .from("profiles")
       .select("id, email, email_confirmed_at")
-      .eq("email", email)
+      .eq("email", email.trim())
       .single();
 
     // Always respond the same (avoid email enumeration)
@@ -38,7 +39,7 @@ router.post("/", async (req, res) => {
     // Generate new verification token
     const email_token = crypto.randomBytes(32).toString("hex");
 
-    // Save token
+    // Save token in profiles table
     const { error: updateError } = await supabase
       .from("profiles")
       .update({ email_token })
@@ -49,15 +50,13 @@ router.post("/", async (req, res) => {
     const verifyUrl = `${process.env.FRONTEND_URL}/verify-email?token=${email_token}`;
 
     // Send verification email
-    await sendEmail({
+    await sendInviteEmail({
       to: profile.email,
       subject: "Verify your email address",
       html: `
         <p>Welcome!</p>
         <p>Please verify your email address by clicking the link below:</p>
-        <p>
-          <a href="${verifyUrl}">Verify Email</a>
-        </p>
+        <p><a href="${verifyUrl}">Verify Email</a></p>
         <p>If you did not create an account, you can ignore this email.</p>
       `,
     });
