@@ -9,6 +9,10 @@ import eventRoutes from "./routes/events.js";
 import pastorRoutes from "./routes/pastor/index.js";
 import profileRoutes from "./routes/profile/index.js";
 import churchRoutes from "./routes/churches.js";
+import childrenRoutes from "./routes/children-members.js";
+import treasuryRoutes from "./routes/treasury/index.js";
+import treasuryTransactionRoutes from "./routes/treasury/transactions.js";
+
 import memberRoutes from "./routes/members.js";
 import requireAuth from "./middleware/requireAuth.js";
 import requireAdmin from "./middleware/requireAdmin.js";
@@ -41,6 +45,9 @@ app.use("/events", requireAuth, eventRoutes);
 app.use("/pastor", requireAuth, pastorRoutes);
 app.use("/members", memberRoutes);
 app.use("/attendance", attendanceRoutes);
+app.use("/children", childrenRoutes);
+app.use("/treasury", treasuryRoutes);
+app.use("/treasury/transactions", treasuryTransactionRoutes);
 /**
  * ADMIN ROUTES
  */

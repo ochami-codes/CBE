@@ -7,12 +7,7 @@ const router = express.Router();
 
 const DEPARTMENT_TABLES = {
   youth: "youth_members",
-  children: "children_members",
-  choir: "choir_members",
-  sabbath_school: "sabbath_school_members",
-  amo: "amo_members",
-  women: "women_members",
-  deaconary: "deaconary_members"
+  children: "children_members"
 };
 
 /**

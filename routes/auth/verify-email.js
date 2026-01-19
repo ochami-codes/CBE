@@ -1,14 +1,15 @@
+// backend/routes/auth/verify-email.js
 import express from "express";
-import { supabase } from "../../supabaseClient.js";
 
 const router = express.Router();
 
-// GET /auth/verify-email?token=xxxx
-router.get("/", async (req, res) => {
-  const { token } = req.query;
+// POST /auth/verify-email
+router.post("/", async (req, res) => {
+  const supabase = req.supabase;
+  const { token } = req.body;
 
   if (!token) {
-    return res.status(400).json({ error: "Invalid verification link" });
+    return res.status(400).json({ message: "Invalid or missing verification token" });
   }
 
   try {
@@ -20,41 +21,37 @@ router.get("/", async (req, res) => {
       .single();
 
     if (error || !profile) {
-      return res.status(400).json({
-        error: "Verification link is invalid or expired",
-      });
+      return res.status(400).json({ message: "Verification link is invalid or expired" });
     }
 
     // 2️⃣ Already verified
     if (profile.email_confirmed_at) {
-      return res.json({
-        message: "Email already verified. You can log in.",
-      });
+      return res.json({ message: "Email already verified. You can log in." });
     }
 
-    // 3️⃣ Mark email as verified
+    // 3️⃣ Mark email as verified in profiles table
     const { error: updateError } = await supabase
       .from("profiles")
       .update({
-        email_confirmed_at: true,
+        email_confirmed_at: new Date().toISOString(),
         email_token: null,
       })
       .eq("id", profile.id);
 
     if (updateError) throw updateError;
 
-    // 4️⃣ (Optional but recommended) confirm email in Supabase Auth
-    await supabase.auth.admin.updateUserById(profile.id, {
-      email_confirm: true,
-    });
+    // 4️⃣ Update Supabase Auth user (optional but recommended)
+    try {
+      await supabase.auth.admin.updateUserById(profile.id, { email_confirm: true });
+    } catch (authErr) {
+      console.warn("Supabase auth email confirmation skipped:", authErr.message);
+    }
 
-    // 5️⃣ Redirect to frontend success page
-    res.redirect(
-      `${process.env.FRONTEND_URL}/email-verified`
-    );
+    // 5️⃣ Respond with success
+    res.json({ message: "Your email has been verified successfully." });
   } catch (err) {
     console.error("Email verification error:", err);
-    res.status(500).json({ error: "Verification failed" });
+    res.status(500).json({ message: "Verification failed. Please try again later." });
   }
 });
 

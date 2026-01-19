@@ -1,13 +1,12 @@
 // backend/routes/auth/resend-verification.js
 import express from "express";
-import crypto from "crypto";
-import { sendInviteEmail } from "../../utils/email.js"; // adjust to your actual function
+import { supabase } from "../../supabaseClient.js"; // make sure your supabase client is imported
+import { authMiddleware } from "../../middleware/authMiddleware.js"; // optional if only logged-in users can trigger
 
 const router = express.Router();
 
 // POST /auth/resend-verification
 router.post("/", async (req, res) => {
-  const supabase = req.supabase;
   const { email } = req.body;
 
   if (!email) {
@@ -15,57 +14,39 @@ router.post("/", async (req, res) => {
   }
 
   try {
-    // Find user profile
-    const { data: profile, error } = await supabase
-      .from("profiles")
-      .select("id, email, email_confirmed_at")
-      .eq("email", email.trim())
-      .single();
+    // 1️⃣ Fetch the user from Supabase Auth
+    const { data: userData, error: userError } = await supabase.auth.admin.getUserByEmail(email);
 
-    // Always respond the same (avoid email enumeration)
-    if (error || !profile) {
+    // Always respond the same way to avoid email enumeration
+    if (userError || !userData?.user) {
       return res.json({
         message: "If the email exists, a verification link has been sent.",
       });
     }
 
-    // Already verified
-    if (profile.email_confirmed_at) {
+    const user = userData.user;
+
+    // 2️⃣ Check if already confirmed
+    if (user.email_confirmed_at) {
       return res.json({
         message: "If the email exists, a verification link has been sent.",
       });
     }
 
-    // Generate new verification token
-    const email_token = crypto.randomBytes(32).toString("hex");
+    // 3️⃣ Resend the verification email using Supabase admin API
+    const { error: resendError } = await supabase.auth.admin.resendVerificationEmail(user.id);
 
-    // Save token in profiles table
-    const { error: updateError } = await supabase
-      .from("profiles")
-      .update({ email_token })
-      .eq("id", profile.id);
+    if (resendError) {
+      console.error("Supabase resend verification error:", resendError);
+      return res.status(500).json({ message: "Failed to resend verification email" });
+    }
 
-    if (updateError) throw updateError;
-
-    const verifyUrl = `${process.env.FRONTEND_URL}/verify-email?token=${email_token}`;
-
-    // Send verification email
-    await sendInviteEmail({
-      to: profile.email,
-      subject: "Verify your email address",
-      html: `
-        <p>Welcome!</p>
-        <p>Please verify your email address by clicking the link below:</p>
-        <p><a href="${verifyUrl}">Verify Email</a></p>
-        <p>If you did not create an account, you can ignore this email.</p>
-      `,
-    });
-
+    // 4️⃣ Success response
     res.json({
       message: "If the email exists, a verification link has been sent.",
     });
   } catch (err) {
-    console.error("Resend verification error:", err);
+    console.error("Resend verification route error:", err);
     res.status(500).json({ message: "Server error" });
   }
 });

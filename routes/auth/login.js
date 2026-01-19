@@ -1,5 +1,5 @@
+// backend/routes/auth/login.js
 import express from "express";
-import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 
 const router = express.Router();
@@ -10,39 +10,54 @@ router.post("/", async (req, res) => {
   const { email, password } = req.body;
 
   if (!email || !password) {
-    return res.status(400).json({ message: "Email and password required" });
+    return res.status(400).json({
+      error: "Invalid request",
+      details: "Email and password are required",
+    });
   }
 
   try {
-    // 1️⃣ Fetch profile + role
-    const { data: profile, error } = await supabase
+    // 1️⃣ Authenticate via Supabase Auth
+    const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    if (authError || !authData.user) {
+      return res.status(401).json({
+        error: "Login failed",
+        details: "Invalid email or password",
+      });
+    }
+
+    const userId = authData.user.id;
+
+    // 2️⃣ Fetch profile + role
+    const { data: profile, error: profileError } = await supabase
       .from("profiles")
       .select(`
         id,
         email,
-        password_hash,
         email_confirmed_at,
         church_id,
         roles ( id, name )
       `)
-      .eq("email", email)
+      .eq("id", userId)
       .single();
 
-    if (error || !profile) {
-      return res.status(401).json({ message: "Invalid email or password" });
-    }
-
-    // 2️⃣ Block unverified emails
-    if (!profile.email_confirm_at) {
-      return res.status(403).json({
-        message: "Please verify your email before logging in",
+    if (profileError || !profile) {
+      return res.status(401).json({
+        error: "Login failed",
+        details: "Profile not found",
       });
     }
 
-    // 3️⃣ Verify password
-    const match = bcrypt.compareSync(password, profile.password_hash);
-    if (!match) {
-      return res.status(401).json({ message: "Invalid email or password" });
+    // 3️⃣ Block unverified emails
+    if (!profile.email_confirmed_at) {
+      return res.status(403).json({
+        error: "Email not verified",
+        details: "Please verify your email before logging in",
+      });
     }
 
     // 4️⃣ Generate JWT
@@ -68,7 +83,10 @@ router.post("/", async (req, res) => {
     });
   } catch (err) {
     console.error("Login error:", err);
-    res.status(500).json({ message: "Server error" });
+    res.status(500).json({
+      error: "Server error",
+      details: "Something went wrong during login",
+    });
   }
 });
 

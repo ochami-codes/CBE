@@ -1,96 +1,201 @@
 // backend/routes/auth/register.js
 import express from "express";
-import { supabase } from "../../supabaseClient.js"; // service role client
-import crypto from "crypto";
+import { supabase } from "../../supabaseClient.js";
 
 const router = express.Router();
 
 // POST /auth/register
 router.post("/", async (req, res) => {
-  const { full_name, email, password, church_name } = req.body;
+  const { full_name, email, password, church_name, church_address } = req.body;
 
   if (!full_name || !email || !password || !church_name) {
     return res.status(400).json({ error: "All fields are required" });
   }
 
   try {
-    // 1️⃣ Ensure church exists
-    let { data: church } = await supabase
+    // 1️⃣ Find or create church
+    let church;
+    let isNewChurch = false;
+
+    const { data: existingChurch } = await supabase
       .from("churches")
       .select("*")
       .eq("name", church_name.trim())
-      .single();
+      .maybeSingle();
 
-    if (!church) {
-      const { data: newChurch } = await supabase
+    if (existingChurch) {
+      church = existingChurch;
+    } else {
+      isNewChurch = true;
+
+      const { data: newChurch, error: churchError } = await supabase
         .from("churches")
-        .insert([{ name: church_name.trim() }])
-        .select("*")
+        .insert({
+          name: church_name.trim(),
+          address: church_address || null,
+        })
+        .select()
         .single();
+
+      if (churchError) throw churchError;
       church = newChurch;
+
+      /* ------------------ DEFAULT DEPARTMENTS ------------------ */
+
+      const defaultDepartments = [
+        "Children",
+        "Youth / Ambassadors",
+        "Treasury",
+        "Communication",
+        "Sabbath School",
+      ];
+
+      await supabase.from("departments").insert(
+        defaultDepartments.map(name => ({
+          name,
+          church_id: church.id,
+        }))
+      );
+
+      /* ------------------ COMMUNICATION SETUP ------------------ */
+
+      const { data: communicationDept } = await supabase
+        .from("departments")
+        .select("id")
+        .eq("name", "Communication")
+        .eq("church_id", church.id)
+        .single();
+
+      await supabase.from("announcements").insert({
+        church_id: church.id,
+        title: "Welcome to ChurchApp 🎉",
+        message:
+          "Welcome to our church family! Stay tuned here for announcements, encouragements, and updates.",
+        department_id: communicationDept.id,
+      });
+
+      /* ------------------ TREASURY SEEDING ------------------ */
+
+      // Fund Groups (purpose-based, not ownership-based)
+      const fundGroups = [
+        { name: "Tithe & Trust" },
+        { name: "Local Church" },
+        { name: "Special Offerings" },
+      ];
+
+      const { data: groups, error: groupsError } = await supabase
+        .from("treasury_fund_groups")
+        .insert(
+          fundGroups.map(g => ({
+            name: g.name,
+            church_id: church.id,
+          }))
+        )
+        .select();
+
+      if (groupsError) throw groupsError;
+
+      const groupId = (name) =>
+        groups.find(g => g.name === name)?.id;
+
+      // Treasury Funds (no logic in names)
+      const funds = [
+        { name: "Tithe", group: "Tithe & Trust" },
+
+        { name: "Church Budget", group: "Local Church" },
+        { name: "Building Fund", group: "Local Church" },
+        { name: "Other Local Funds", group: "Local Church" },
+
+        { name: "Combined Offerings", group: "Special Offerings" },
+        { name: "Camp Meeting", group: "Special Offerings" },
+      ];
+
+      const { data: insertedFunds, error: fundsError } = await supabase
+        .from("treasury_funds")
+        .insert(
+          funds.map(f => ({
+            name: f.name,
+            group_id: groupId(f.group),
+            church_id: church.id,
+          }))
+        )
+        .select();
+
+      if (fundsError) throw fundsError;
+
+      // Optional: seed opening balances (system-level, zeroed)
+      await supabase.from("treasury_transactions").insert(
+        insertedFunds.map(fund => ({
+          fund_id: fund.id,
+          amount: 0,
+          type: "income",          // explicit direction
+          given_by: "system",
+          recorded_by: null,
+          church_id: church.id,
+        }))
+      );
     }
 
-    // 2️⃣ Determine role
+    /* ------------------ ROLE ASSIGNMENT ------------------ */
+
     const { count } = await supabase
       .from("profiles")
-      .select("id", { count: "exact" })
+      .select("id", { count: "exact", head: true })
       .eq("church_id", church.id);
 
-    const role_name = count === 0 ? "Admin" : "Member";
+    const roleName = count === 0 ? "Admin" : "Member";
 
     const { data: role } = await supabase
       .from("roles")
-      .select("*")
-      .eq("name", role_name)
+      .select("id")
+      .eq("name", roleName)
       .single();
 
-    if (!role) throw new Error("Role not found");
+    /* ------------------ AUTH USER ------------------ */
 
-    // 3️⃣ Create the Auth user
-    const { data: authUser, error: authError } = await supabase.auth.admin.createUser({
-      email,
-      password,
-      email_confirm: false,
-    });
+    const { data: authData, error: authError } =
+      await supabase.auth.admin.createUser({
+        email,
+        password,
+        email_confirm: false,
+      });
 
     if (authError) throw authError;
 
-    const userId = authUser.id;
+    const userId = authData.user.id;
 
-    // 4️⃣ Create profile (without password_hash)
-    const email_token = crypto.randomBytes(32).toString("hex");
+    /* ------------------ PROFILE ------------------ */
 
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
-      .insert([
-        {
-          id: userId, // must match auth user
-          full_name,
-          email,
-          role_id: role.id,
-          church_id: church.id,
-          email_token,
-          email_confirmed_at: null, // still falsey until verified
-        },
-      ])
-      .select("*")
+      .insert({
+        id: userId,
+        full_name,
+        email,
+        role_id: role.id,
+        church_id: church.id,
+      })
+      .select()
       .single();
 
     if (profileError) throw profileError;
 
     res.status(201).json({
-      message: "Registration successful! Please verify your email.",
+      message: "Registration successful. Please verify your email.",
       user: {
         id: profile.id,
         email: profile.email,
         full_name: profile.full_name,
-        role: role_name,
+        role: roleName,
         church: church.name,
       },
     });
   } catch (err) {
     console.error("Registration error:", err);
-    res.status(500).json({ error: "Registration failed: " + err.message });
+    res.status(500).json({
+      error: "Registration failed",
+      details: err.message,
+    });
   }
 });
 

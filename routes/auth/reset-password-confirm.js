@@ -1,53 +1,48 @@
+// backend/routes/auth/reset-password-confirm.js
 import express from "express";
-import bcrypt from "bcryptjs";
+import { supabase } from "../../supabaseClient.js";
 
 const router = express.Router();
 
 // POST /auth/reset-password-confirm
 router.post("/", async (req, res) => {
-  const supabase = req.supabase;
-  const { token, password } = req.body;
+  const { token, newPassword } = req.body;
 
-  if (!token || !password) {
-    return res.status(400).json({ message: "Token and password required" });
+  if (!token || !newPassword) {
+    return res.status(400).json({
+      message: "Reset token and new password are required",
+    });
   }
 
   try {
-    // 1️⃣ Find profile by reset token
-    const { data: profile, error } = await supabase
-      .from("profiles")
-      .select("id, password_reset_expires")
-      .eq("password_reset_token", token)
-      .single();
+    // 1️⃣ Verify the token with Supabase Auth (JWT token)
+    const { data: userData, error: userError } = await supabase.auth.admin.getUser(token);
 
-    if (error || !profile) {
-      return res.status(400).json({ message: "Invalid or expired token" });
+    if (userError || !userData?.user) {
+      return res.status(400).json({
+        message: "Reset token is invalid or expired",
+      });
     }
 
-    // 2️⃣ Check expiration
-    if (new Date(profile.password_reset_expires) < new Date()) {
-      return res.status(400).json({ message: "Reset token expired" });
-    }
+    const userId = userData.user.id;
 
-    // 3️⃣ Hash new password
-    const password_hash = bcrypt.hashSync(password, 10);
-
-    // 4️⃣ Update password & invalidate token
-    const { error: updateError } = await supabase
-      .from("profiles")
-      .update({
-        password_hash,
-        password_reset_token: null,
-        password_reset_expires: null,
-      })
-      .eq("id", profile.id);
+    // 2️⃣ Update password via Supabase Auth
+    const { data: updatedUser, error: updateError } =
+      await supabase.auth.admin.updateUserById(userId, {
+        password: newPassword,
+        email_confirm: true, // optional: confirm email when password reset
+      });
 
     if (updateError) throw updateError;
 
-    res.json({ message: "Password reset successful" });
+    res.json({
+      message: "Password reset successful. You can now sign in.",
+    });
   } catch (err) {
-    console.error("Reset password error:", err);
-    res.status(500).json({ message: "Server error" });
+    console.error("Reset password confirm error:", err);
+    res.status(500).json({
+      message: "Server error. Please try again later.",
+    });
   }
 });
 
