@@ -1,12 +1,19 @@
-// supabaseClient.js
-import 'dotenv/config'; // loads environment variables
+import 'dotenv/config';
 import { createClient } from '@supabase/supabase-js';
 
+console.log(
+  "SUPABASE_URL:",
+  process.env.SUPABASE_URL ? "OK" : "MISSING"
+);
+console.log(
+  "SERVICE_ROLE_KEY:",
+  process.env.SUPABASE_SERVICE_ROLE_KEY ? "OK" : "MISSING"
+);
+
 if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
-  throw new Error("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY in environment.");
+  throw new Error("Missing Supabase environment variables");
 }
 
-// Create a Supabase client using the service role key (server-side only)
 export const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
