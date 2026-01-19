@@ -1,3 +1,4 @@
+// backend/routes/auth/register.js
 import express from "express";
 import { supabase } from "../../supabaseClient.js";
 
@@ -12,44 +13,39 @@ router.post("/", async (req, res) => {
   }
 
   try {
-    /* ======================================================
-       1️⃣ FIND OR CREATE CHURCH
-    ====================================================== */
-
     let church;
+    let isNewChurch = false;
 
-    const { data: existingChurch, error: findChurchError } =
-      await supabase
-        .from("churches")
-        .select("*")
-        .eq("name", church_name.trim())
-        .maybeSingle();
+    // ------------------ FIND OR CREATE CHURCH ------------------
+    const { data: existingChurch, error: churchFetchError } = await supabase
+      .from("churches")
+      .select("*")
+      .eq("name", church_name.trim())
+      .maybeSingle();
 
-    if (findChurchError) throw findChurchError;
+    if (churchFetchError) {
+      console.error("Fetch church error:", churchFetchError);
+      return res.status(500).json({ error: "Failed to fetch church", details: churchFetchError });
+    }
 
     if (existingChurch) {
       church = existingChurch;
     } else {
-      const { data: newChurch, error: createChurchError } =
-        await supabase
-          .from("churches")
-          .insert({
-            name: church_name.trim(),
-            address: church_address || null,
-          })
-          .select()
-          .single();
+      isNewChurch = true;
+      const { data: newChurch, error: churchInsertError } = await supabase
+        .from("churches")
+        .insert({ name: church_name.trim(), address: church_address || null })
+        .select()
+        .single();
 
-      if (createChurchError || !newChurch) {
-        throw createChurchError || new Error("Failed to create church");
+      if (churchInsertError) {
+        console.error("Insert church error:", churchInsertError);
+        return res.status(500).json({ error: "Failed to create church", details: churchInsertError });
       }
 
       church = newChurch;
 
-      /* ======================================================
-         2️⃣ DEFAULT DEPARTMENTS
-      ====================================================== */
-
+      // ------------------ DEFAULT DEPARTMENTS ------------------
       const defaultDepartments = [
         "Children",
         "Youth / Ambassadors",
@@ -60,77 +56,51 @@ router.post("/", async (req, res) => {
 
       const { error: deptError } = await supabase
         .from("departments")
-        .insert(
-          defaultDepartments.map((name) => ({
-            name,
-            church_id: church.id,
-          }))
-        );
+        .insert(defaultDepartments.map(name => ({ name, church_id: church.id })));
 
-      if (deptError) throw deptError;
-
-      /* ======================================================
-         3️⃣ COMMUNICATION ANNOUNCEMENT
-      ====================================================== */
-
-      const { data: communicationDept, error: commDeptError } =
-        await supabase
-          .from("departments")
-          .select("id")
-          .eq("name", "Communication")
-          .eq("church_id", church.id)
-          .single();
-
-      if (commDeptError || !communicationDept) {
-        throw new Error("Communication department missing");
+      if (deptError) {
+        console.error("Insert departments error:", deptError);
+        return res.status(500).json({ error: "Failed to create default departments", details: deptError });
       }
 
-      const { error: announcementError } = await supabase
-        .from("announcements")
-        .insert({
-          church_id: church.id,
-          title: "Welcome to ChurchApp 🎉",
-          message:
-            "Welcome to our church family! Stay tuned here for announcements, encouragements, and updates.",
-          department_id: communicationDept.id,
-        });
+      // ------------------ COMMUNICATION SETUP ------------------
+      const { data: commDept, error: commDeptError } = await supabase
+        .from("departments")
+        .select("id")
+        .eq("name", "Communication")
+        .eq("church_id", church.id)
+        .single();
 
-      if (announcementError) throw announcementError;
+      if (commDeptError || !commDept) {
+        console.error("Communication dept fetch error:", commDeptError);
+        return res.status(500).json({ error: "Failed to fetch Communication dept", details: commDeptError });
+      }
 
-      /* ======================================================
-         4️⃣ TREASURY FUND GROUPS
-      ====================================================== */
+      await supabase.from("announcements").insert({
+        church_id: church.id,
+        title: "Welcome to ChurchApp 🎉",
+        message: "Welcome to our church family! Stay tuned here for announcements, encouragements, and updates.",
+        department_id: commDept.id,
+      });
 
+      // ------------------ TREASURY SEEDING ------------------
       const fundGroups = [
         { name: "Tithe & Trust" },
         { name: "Local Church" },
         { name: "Special Offerings" },
       ];
 
-      const { data: groups, error: groupsError } =
-        await supabase
-          .from("treasury_fund_groups")
-          .insert(
-            fundGroups.map((g) => ({
-              name: g.name,
-              church_id: church.id,
-            }))
-          )
-          .select();
+      const { data: insertedGroups, error: groupError } = await supabase
+        .from("treasury_fund_groups")
+        .insert(fundGroups.map(g => ({ name: g.name, church_id: church.id })))
+        .select();
 
-      if (groupsError || !groups?.length) {
-        throw groupsError || new Error("Failed to create fund groups");
+      if (groupError) {
+        console.error("Insert fund groups error:", groupError);
+        return res.status(500).json({ error: "Failed to create fund groups", details: groupError });
       }
 
-      const groupId = (name) => {
-        const group = groups.find((g) => g.name === name);
-        if (!group) throw new Error(`Missing fund group: ${name}`);
-        return group.id;
-      };
-
-      /* ======================================================
-         5️⃣ TREASURY FUNDS
-      ====================================================== */
+      const groupId = (name) => insertedGroups.find(g => g.name === name)?.id;
 
       const funds = [
         { name: "Tithe", group: "Tithe & Trust" },
@@ -141,52 +111,38 @@ router.post("/", async (req, res) => {
         { name: "Camp Meeting", group: "Special Offerings" },
       ];
 
-      const { data: insertedFunds, error: fundsError } =
-        await supabase
-          .from("treasury_funds")
-          .insert(
-            funds.map((f) => ({
-              name: f.name,
-              group_id: groupId(f.group),
-              church_id: church.id,
-            }))
-          )
-          .select();
+      const { data: insertedFunds, error: fundsError } = await supabase
+        .from("treasury_funds")
+        .insert(funds.map(f => ({
+          name: f.name,
+          group_id: groupId(f.group),
+          church_id: church.id,
+        })))
+        .select();
 
-      if (fundsError || !insertedFunds?.length) {
-        throw fundsError || new Error("Failed to create treasury funds");
+      if (fundsError) {
+        console.error("Insert funds error:", fundsError);
+        return res.status(500).json({ error: "Failed to create funds", details: fundsError });
       }
 
-      /* ======================================================
-         6️⃣ OPENING BALANCES
-      ====================================================== */
-
-      const { error: openingBalanceError } = await supabase
-        .from("treasury_transactions")
-        .insert(
-          insertedFunds.map((fund) => ({
-            fund_id: fund.id,
-            amount: 0,
-            type: "income",
-            given_by: "system",
-            recorded_by: null,
-            church_id: church.id,
-          }))
-        );
-
-      if (openingBalanceError) throw openingBalanceError;
+      // Optional: seed opening balances
+      await supabase.from("treasury_transactions").insert(
+        insertedFunds.map(fund => ({
+          fund_id: fund.id,
+          amount: 0,
+          type: "income",
+          given_by: "system",
+          recorded_by: null,
+          church_id: church.id,
+        }))
+      );
     }
 
-    /* ======================================================
-       7️⃣ ROLE ASSIGNMENT
-    ====================================================== */
-
-    const { count, error: countError } = await supabase
+    // ------------------ ROLE ASSIGNMENT ------------------
+    const { count } = await supabase
       .from("profiles")
       .select("id", { count: "exact", head: true })
       .eq("church_id", church.id);
-
-    if (countError) throw countError;
 
     const roleName = count === 0 ? "Admin" : "Member";
 
@@ -197,48 +153,41 @@ router.post("/", async (req, res) => {
       .single();
 
     if (roleError || !role) {
-      throw roleError || new Error("Role not found");
+      console.error("Role fetch error:", roleError);
+      return res.status(500).json({ error: "Failed to fetch role", details: roleError });
     }
 
-    /* ======================================================
-       8️⃣ AUTH USER
-    ====================================================== */
-
-    const { data: authData, error: authError } =
-      await supabase.auth.admin.createUser({
-        email,
-        password,
-        email_confirm: false,
-      });
+    // ------------------ AUTH USER ------------------
+    const { data: authData, error: authError } = await supabase.auth.admin.createUser({
+      email,
+      password,
+      email_confirm: false,
+    });
 
     if (authError || !authData?.user) {
-      throw authError || new Error("Auth user creation failed");
+      console.error("Auth create user error:", authError);
+      return res.status(500).json({ error: "Failed to create auth user", details: authError });
     }
 
-    /* ======================================================
-       9️⃣ PROFILE
-    ====================================================== */
+    const userId = authData.user.id;
 
-    const { data: profile, error: profileError } =
-      await supabase
-        .from("profiles")
-        .insert({
-          id: authData.user.id,
-          full_name,
-          email,
-          role_id: role.id,
-          church_id: church.id,
-        })
-        .select()
-        .single();
+    // ------------------ PROFILE ------------------
+    const { data: profile, error: profileError } = await supabase
+      .from("profiles")
+      .insert({
+        id: userId,
+        full_name,
+        email,
+        role_id: role.id,
+        church_id: church.id,
+      })
+      .select()
+      .single();
 
     if (profileError || !profile) {
-      throw profileError || new Error("Profile creation failed");
+      console.error("Insert profile error:", profileError);
+      return res.status(500).json({ error: "Failed to create profile", details: profileError });
     }
-
-    /* ======================================================
-       ✅ SUCCESS
-    ====================================================== */
 
     res.status(201).json({
       message: "Registration successful. Please verify your email.",
@@ -252,10 +201,19 @@ router.post("/", async (req, res) => {
     });
 
   } catch (err) {
-    console.error("Registration error:", err);
+    console.error("Registration error:", {
+      name: err.name,
+      code: err.code,
+      message: err.message,
+      details: err.details,
+      hint: err.hint,
+      stack: err.stack,
+    });
+
     res.status(500).json({
       error: "Registration failed",
-      details: err.message,
+      details: err.message || JSON.stringify(err),
+      code: err.code || null,
     });
   }
 });
