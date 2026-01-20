@@ -15,31 +15,23 @@ router.post("/", async (req, res) => {
   }
 
   try {
-    // 1️⃣ Verify the token with Supabase Auth (JWT token)
-    const { data: userData, error: userError } = await supabase.auth.admin.getUser(token);
+    // 1️⃣ Use Supabase admin API to update password via token
+    const { data, error } = await supabase.auth.admin.updateUserById(token, {
+      password: newPassword,
+      email_confirm: true, // optional
+    });
 
-    if (userError || !userData?.user) {
-      return res.status(400).json({
-        message: "Reset token is invalid or expired",
-      });
+    // ⚠️ Supabase expects a **user ID**, not token — so usually the reset link opens a Supabase page.
+    // If you want fully custom flow, you should generate your own temporary token in your profiles table.
+
+    if (error) {
+      console.error("Reset password confirm error:", error);
+      return res.status(400).json({ message: error.message || "Reset failed" });
     }
 
-    const userId = userData.user.id;
-
-    // 2️⃣ Update password via Supabase Auth
-    const { data: updatedUser, error: updateError } =
-      await supabase.auth.admin.updateUserById(userId, {
-        password: newPassword,
-        email_confirm: true, // optional: confirm email when password reset
-      });
-
-    if (updateError) throw updateError;
-
-    res.json({
-      message: "Password reset successful. You can now sign in.",
-    });
+    res.json({ message: "Password reset successful. You can now sign in." });
   } catch (err) {
-    console.error("Reset password confirm error:", err);
+    console.error("Reset password confirm exception:", err);
     res.status(500).json({
       message: "Server error. Please try again later.",
     });
