@@ -1,7 +1,6 @@
 // backend/routes/auth/resend-verification.js
 import express from "express";
-import { supabase } from "../../supabaseClient.js"; // make sure your supabase client is imported
-import { authMiddleware } from "../../middleware/authMiddleware.js"; // optional if only logged-in users can trigger
+import { supabase } from "../../supabaseClient.js";
 
 const router = express.Router();
 
@@ -14,40 +13,26 @@ router.post("/", async (req, res) => {
   }
 
   try {
-    // 1️⃣ Fetch the user from Supabase Auth
-    const { data: userData, error: userError } = await supabase.auth.admin.getUserByEmail(email);
+    // Generate a new signup verification link (Supabase sends the email)
+    const { error } = await supabase.auth.admin.generateLink({
+      type: "signup",
+      email,
+    });
 
-    // Always respond the same way to avoid email enumeration
-    if (userError || !userData?.user) {
-      return res.json({
-        message: "If the email exists, a verification link has been sent.",
-      });
+    if (error) {
+      console.error("Resend verification error:", error);
+      // Still return generic message (anti-enumeration)
     }
 
-    const user = userData.user;
-
-    // 2️⃣ Check if already confirmed
-    if (user.email_confirmed_at) {
-      return res.json({
-        message: "If the email exists, a verification link has been sent.",
-      });
-    }
-
-    // 3️⃣ Resend the verification email using Supabase admin API
-    const { error: resendError } = await supabase.auth.admin.resendVerificationEmail(user.id);
-
-    if (resendError) {
-      console.error("Supabase resend verification error:", resendError);
-      return res.status(500).json({ message: "Failed to resend verification email" });
-    }
-
-    // 4️⃣ Success response
-    res.json({
+    // Always respond the same way
+    return res.json({
       message: "If the email exists, a verification link has been sent.",
     });
   } catch (err) {
     console.error("Resend verification route error:", err);
-    res.status(500).json({ message: "Server error" });
+    return res.status(500).json({
+      message: "If the email exists, a verification link has been sent.",
+    });
   }
 });
 
