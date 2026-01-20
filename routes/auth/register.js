@@ -9,14 +9,13 @@ router.post("/", async (req, res) => {
   const { full_name, email, password, church_name, church_address } = req.body;
 
   if (!full_name || !email || !password || !church_name) {
-    return res.status(400).json({ error: "All fields are required" });
+    return res.status(400).json({ error: "All fields are required." });
   }
 
   try {
     let church;
-    let isNewChurch = false;
 
-    // ------------------ FIND OR CREATE CHURCH ------------------
+    // 1️⃣ Check if church exists
     const { data: existingChurch, error: churchFetchError } = await supabase
       .from("churches")
       .select("*")
@@ -25,27 +24,30 @@ router.post("/", async (req, res) => {
 
     if (churchFetchError) {
       console.error("Fetch church error:", churchFetchError);
-      return res.status(500).json({ error: "Failed to fetch church", details: churchFetchError });
+      return res.status(500).json({ error: "Failed to fetch church." });
     }
 
     if (existingChurch) {
       church = existingChurch;
     } else {
-      isNewChurch = true;
+      // 2️⃣ Create new church
       const { data: newChurch, error: churchInsertError } = await supabase
         .from("churches")
-        .insert({ name: church_name.trim(), address: church_address || null })
+        .insert({
+          name: church_name.trim(),
+          address: church_address || null,
+        })
         .select()
         .single();
 
       if (churchInsertError) {
-        console.error("Insert church error:", churchInsertError);
-        return res.status(500).json({ error: "Failed to create church", details: churchInsertError });
+        console.error("Create church error:", churchInsertError);
+        return res.status(500).json({ error: "Failed to create church." });
       }
 
       church = newChurch;
 
-      // ------------------ DEFAULT DEPARTMENTS ------------------
+      // 3️⃣ Seed default departments
       const defaultDepartments = [
         "Children",
         "Youth / Ambassadors",
@@ -56,51 +58,43 @@ router.post("/", async (req, res) => {
 
       const { error: deptError } = await supabase
         .from("departments")
-        .insert(defaultDepartments.map(name => ({ name, church_id: church.id })));
+        .insert(defaultDepartments.map((name) => ({
+          name,
+          church_id: church.id,
+        })));
 
       if (deptError) {
         console.error("Insert departments error:", deptError);
-        return res.status(500).json({ error: "Failed to create default departments", details: deptError });
       }
 
-      // ------------------ COMMUNICATION SETUP ------------------
-      const { data: commDept, error: commDeptError } = await supabase
+      // 4️⃣ Seed announcements
+      const { data: commDept } = await supabase
         .from("departments")
         .select("id")
-        .eq("name", "Communication")
         .eq("church_id", church.id)
+        .eq("name", "Communication")
         .single();
 
-      if (commDeptError || !commDept) {
-        console.error("Communication dept fetch error:", commDeptError);
-        return res.status(500).json({ error: "Failed to fetch Communication dept", details: commDeptError });
+      if (commDept) {
+        await supabase.from("announcements").insert({
+          church_id: church.id,
+          title: "Welcome to ChurchApp 🎉",
+          message: "Welcome to our church family! Stay tuned for updates.",
+          department_id: commDept.id,
+        });
       }
 
-      await supabase.from("announcements").insert({
-        church_id: church.id,
-        title: "Welcome to ChurchApp 🎉",
-        message: "Welcome to our church family! Stay tuned here for announcements, encouragements, and updates.",
-        department_id: commDept.id,
-      });
-
-      // ------------------ TREASURY SEEDING ------------------
+      // 5️⃣ Seed treasury groups & funds
       const fundGroups = [
-        { name: "Tithe & Trust" },
-        { name: "Local Church" },
-        { name: "Special Offerings" },
+        "Tithe & Trust",
+        "Local Church",
+        "Special Offerings",
       ];
 
-      const { data: insertedGroups, error: groupError } = await supabase
+      const { data: insertedGroups } = await supabase
         .from("treasury_fund_groups")
-        .insert(fundGroups.map(g => ({ name: g.name, church_id: church.id })))
+        .insert(fundGroups.map((name) => ({ name, church_id: church.id })))
         .select();
-
-      if (groupError) {
-        console.error("Insert fund groups error:", groupError);
-        return res.status(500).json({ error: "Failed to create fund groups", details: groupError });
-      }
-
-      const groupId = (name) => insertedGroups.find(g => g.name === name)?.id;
 
       const funds = [
         { name: "Tithe", group: "Tithe & Trust" },
@@ -111,34 +105,31 @@ router.post("/", async (req, res) => {
         { name: "Camp Meeting", group: "Special Offerings" },
       ];
 
-      const { data: insertedFunds, error: fundsError } = await supabase
+      const { data: insertedFunds } = await supabase
         .from("treasury_funds")
-        .insert(funds.map(f => ({
+        .insert(funds.map((f) => ({
           name: f.name,
-          group_id: groupId(f.group),
+          group_id: insertedGroups.find((g) => g.name === f.group)?.id,
           church_id: church.id,
         })))
         .select();
 
-      if (fundsError) {
-        console.error("Insert funds error:", fundsError);
-        return res.status(500).json({ error: "Failed to create funds", details: fundsError });
+      // Optional: zeroed opening balances
+      if (insertedFunds?.length) {
+        await supabase.from("treasury_transactions").insert(
+          insertedFunds.map((f) => ({
+            fund_id: f.id,
+            amount: 0,
+            type: "income",
+            given_by: "system",
+            recorded_by: null,
+            church_id: church.id,
+          }))
+        );
       }
-
-      // Optional: seed opening balances
-      await supabase.from("treasury_transactions").insert(
-        insertedFunds.map(fund => ({
-          fund_id: fund.id,
-          amount: 0,
-          type: "income",
-          given_by: "system",
-          recorded_by: null,
-          church_id: church.id,
-        }))
-      );
     }
 
-    // ------------------ ROLE ASSIGNMENT ------------------
+    // 6️⃣ Determine role
     const { count } = await supabase
       .from("profiles")
       .select("id", { count: "exact", head: true })
@@ -146,32 +137,37 @@ router.post("/", async (req, res) => {
 
     const roleName = count === 0 ? "Admin" : "Member";
 
-    const { data: role, error: roleError } = await supabase
+    const { data: role } = await supabase
       .from("roles")
       .select("id")
       .eq("name", roleName)
       .single();
 
-    if (roleError || !role) {
-      console.error("Role fetch error:", roleError);
-      return res.status(500).json({ error: "Failed to fetch role", details: roleError });
+    if (!role) {
+      return res.status(500).json({ error: "Role not found." });
     }
 
-    // ------------------ AUTH USER ------------------
-    const { data: authData, error: authError } = await supabase.auth.admin.createUser({
-      email,
-      password,
-      email_confirm: false,
-    });
-
-    if (authError || !authData?.user) {
-      console.error("Auth create user error:", authError);
-      return res.status(500).json({ error: "Failed to create auth user", details: authError });
+    // 7️⃣ Create Supabase Auth user safely
+    let authData;
+    try {
+      const result = await supabase.auth.admin.createUser({
+        email,
+        password,
+        email_confirm: false,
+      });
+      authData = result.data;
+    } catch (err) {
+      if (err?.message?.includes("already been registered")) {
+        return res.status(400).json({
+          error: "This email is already registered. Please log in or reset your password."
+        });
+      }
+      throw err;
     }
 
     const userId = authData.user.id;
 
-    // ------------------ PROFILE ------------------
+    // 8️⃣ Insert profile
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
       .insert({
@@ -184,36 +180,26 @@ router.post("/", async (req, res) => {
       .select()
       .single();
 
-    if (profileError || !profile) {
+    if (profileError) {
       console.error("Insert profile error:", profileError);
-      return res.status(500).json({ error: "Failed to create profile", details: profileError });
+      return res.status(500).json({ error: "Failed to create user profile." });
     }
 
     res.status(201).json({
       message: "Registration successful. Please verify your email.",
       user: {
         id: profile.id,
-        email: profile.email,
         full_name: profile.full_name,
+        email: profile.email,
         role: roleName,
         church: church.name,
       },
     });
-
   } catch (err) {
-    console.error("Registration error:", {
-      name: err.name,
-      code: err.code,
-      message: err.message,
-      details: err.details,
-      hint: err.hint,
-      stack: err.stack,
-    });
-
+    console.error("Registration error:", err);
     res.status(500).json({
       error: "Registration failed",
-      details: err.message || JSON.stringify(err),
-      code: err.code || null,
+      details: err.message || "Unknown error",
     });
   }
 });
