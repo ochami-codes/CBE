@@ -9,28 +9,33 @@ router.post("/", async (req, res) => {
   const { email } = req.body;
 
   if (!email) {
-    return res.status(400).json({ message: "Email is required" });
+    return res.status(400).json({
+      message: "Email is required",
+    });
   }
 
   try {
-    // Generate a new signup verification link (Supabase sends the email)
-    const { error } = await supabase.auth.admin.generateLink({
+    // Supabase will resend the signup confirmation email
+    const { error } = await supabase.auth.resend({
       type: "signup",
       email,
+      options: {
+        emailRedirectTo: `${process.env.FRONTEND_URL}/auth/callback`,
+      },
     });
 
     if (error) {
       console.error("Resend verification error:", error);
-      // Still return generic message (anti-enumeration)
+      // Do NOT expose details (anti-enumeration)
     }
 
-    // Always respond the same way
+    // Always return same response
     return res.json({
       message: "If the email exists, a verification link has been sent.",
     });
   } catch (err) {
     console.error("Resend verification route error:", err);
-    return res.status(500).json({
+    return res.json({
       message: "If the email exists, a verification link has been sent.",
     });
   }
