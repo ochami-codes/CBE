@@ -6,8 +6,8 @@ const router = express.Router();
 
 // POST /auth/login
 router.post("/", async (req, res) => {
-  const supabase = req.supabase;
   const { email, password } = req.body;
+  const supabase = req.supabase;
 
   if (!email || !password) {
     return res.status(400).json({
@@ -17,11 +17,9 @@ router.post("/", async (req, res) => {
   }
 
   try {
-    // 1️⃣ Authenticate via Supabase Auth
-    const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
+    // 1️⃣ Authenticate
+    const { data: authData, error: authError } =
+      await supabase.auth.signInWithPassword({ email, password });
 
     if (authError || !authData.user) {
       return res.status(401).json({
@@ -30,33 +28,30 @@ router.post("/", async (req, res) => {
       });
     }
 
-    const userId = authData.user.id;
+    // 2️⃣ Verify email (AUTH is the truth)
+    if (!authData.user.email_confirmed_at) {
+      return res.status(403).json({
+        error: "Email not verified",
+        details: "Please verify your email before logging in",
+      });
+    }
 
-    // 2️⃣ Fetch profile + role
+    // 3️⃣ Fetch profile + role
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
       .select(`
         id,
         email,
-        email_confirmed_at,
         church_id,
         roles ( id, name )
       `)
-      .eq("id", userId)
+      .eq("id", authData.user.id)
       .single();
 
     if (profileError || !profile) {
       return res.status(401).json({
         error: "Login failed",
         details: "Profile not found",
-      });
-    }
-
-    // 3️⃣ Block unverified emails
-    if (!profile.email_confirmed_at) {
-      return res.status(403).json({
-        error: "Email not verified",
-        details: "Please verify your email before logging in",
       });
     }
 
@@ -71,7 +66,7 @@ router.post("/", async (req, res) => {
       { expiresIn: "1h" }
     );
 
-    // 5️⃣ Respond cleanly
+    // 5️⃣ Respond
     res.json({
       token,
       user: {
@@ -89,5 +84,4 @@ router.post("/", async (req, res) => {
     });
   }
 });
-
 export default router;
