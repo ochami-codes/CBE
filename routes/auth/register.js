@@ -1,25 +1,38 @@
 // backend/routes/auth/register.js
 import express from "express";
-import { supabase } from "../../supabaseClient.js";
+import {
+  supabaseAuth,
+  supabaseAdmin,
+} from "../../supabaseClient.js";
 
 const router = express.Router();
 
 // POST /auth/register
 router.post("/", async (req, res) => {
-  const { full_name, email, password, church_name, church_address } = req.body;
+  const {
+    full_name,
+    email,
+    password,
+    church_name,
+    church_address,
+  } = req.body;
 
   if (!full_name || !email || !password || !church_name) {
-    return res.status(400).json({ error: "All fields are required." });
+    return res.status(400).json({
+      message: "All required fields must be provided",
+    });
   }
 
   try {
-    /* ------------------ 1️⃣ Church lookup or creation ------------------ */
+    /* ------------------ 1️⃣ Church lookup or creation (ADMIN) ------------------ */
     let church;
-    const { data: existingChurch, error: churchFetchError } = await supabase
-      .from("churches")
-      .select("*")
-      .eq("name", church_name.trim())
-      .maybeSingle();
+
+    const { data: existingChurch, error: churchFetchError } =
+      await supabaseAdmin
+        .from("churches")
+        .select("*")
+        .eq("name", church_name.trim())
+        .maybeSingle();
 
     if (churchFetchError) throw churchFetchError;
 
@@ -28,19 +41,20 @@ router.post("/", async (req, res) => {
     if (existingChurch) {
       church = existingChurch;
     } else {
-      const { data: newChurch, error: churchInsertError } = await supabase
-        .from("churches")
-        .insert({
-          name: church_name.trim(),
-          address: church_address || null,
-        })
-        .select()
-        .single();
+      const { data: newChurch, error: churchInsertError } =
+        await supabaseAdmin
+          .from("churches")
+          .insert({
+            name: church_name.trim(),
+            address: church_address || null,
+          })
+          .select()
+          .single();
 
       if (churchInsertError) throw churchInsertError;
       church = newChurch;
 
-      // Seed default departments
+      /* -------- Seed departments -------- */
       const departments = [
         "Children",
         "Youth / Ambassadors",
@@ -49,12 +63,15 @@ router.post("/", async (req, res) => {
         "Sabbath School",
       ];
 
-      await supabase.from("departments").insert(
-        departments.map((name) => ({ name, church_id: church.id }))
+      await supabaseAdmin.from("departments").insert(
+        departments.map((name) => ({
+          name,
+          church_id: church.id,
+        }))
       );
 
-      // Seed welcome announcement
-      const { data: commDept } = await supabase
+      /* -------- Seed welcome announcement -------- */
+      const { data: commDept } = await supabaseAdmin
         .from("departments")
         .select("id")
         .eq("church_id", church.id)
@@ -62,19 +79,30 @@ router.post("/", async (req, res) => {
         .single();
 
       if (commDept) {
-        await supabase.from("announcements").insert({
+        await supabaseAdmin.from("announcements").insert({
           church_id: church.id,
           title: "Welcome to ChurchApp 🎉",
-          message: "Welcome to our church family! Stay tuned for updates.",
+          message:
+            "Welcome to our church family! Stay tuned for updates.",
           department_id: commDept.id,
         });
       }
 
-      // Seed treasury fund groups and funds
-      const fundGroups = ["Tithe & Trust", "Local Church", "Special Offerings"];
-      const { data: insertedGroups } = await supabase
+      /* -------- Seed treasury funds -------- */
+      const fundGroups = [
+        "Tithe & Trust",
+        "Local Church",
+        "Special Offerings",
+      ];
+
+      const { data: insertedGroups } = await supabaseAdmin
         .from("treasury_fund_groups")
-        .insert(fundGroups.map((name) => ({ name, church_id: church.id })))
+        .insert(
+          fundGroups.map((name) => ({
+            name,
+            church_id: church.id,
+          }))
+        )
         .select();
 
       const funds = [
@@ -86,19 +114,21 @@ router.post("/", async (req, res) => {
         { name: "Camp Meeting", group: "Special Offerings" },
       ];
 
-      const { data: insertedFunds } = await supabase
+      const { data: insertedFunds } = await supabaseAdmin
         .from("treasury_funds")
         .insert(
           funds.map((f) => ({
             name: f.name,
-            group_id: insertedGroups.find((g) => g.name === f.group)?.id,
+            group_id: insertedGroups.find(
+              (g) => g.name === f.group
+            )?.id,
             church_id: church.id,
           }))
         )
         .select();
 
       if (insertedFunds?.length) {
-        await supabase.from("treasury_transactions").insert(
+        await supabaseAdmin.from("treasury_transactions").insert(
           insertedFunds.map((f) => ({
             fund_id: f.id,
             amount: 0,
@@ -110,30 +140,36 @@ router.post("/", async (req, res) => {
       }
     }
 
-    /* ------------------ 2️⃣ Role assignment ------------------ */
+    /* ------------------ 2️⃣ Role assignment (ADMIN) ------------------ */
     const roleName = isNewChurch ? "Admin" : "Member";
 
-    const { data: role } = await supabase
+    const { data: role } = await supabaseAdmin
       .from("roles")
       .select("id")
       .eq("name", roleName)
       .single();
 
-    if (!role) throw new Error("Role not found");
+    if (!role) {
+      return res.status(500).json({
+        message: "Role configuration error",
+      });
+    }
 
-    /* ------------------ 3️⃣ Create Supabase Auth user ------------------ */
-    const { data: authData, error: authError } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        emailRedirectTo: `${process.env.FRONTEND_URL}/auth/callback`,
-      },
-    });
+    /* ------------------ 3️⃣ Create auth user (AUTH CLIENT) ------------------ */
+    const { data: authData, error: authError } =
+      await supabaseAuth.auth.signUp({
+        email,
+        password,
+        options: {
+          emailRedirectTo: `${process.env.FRONTEND_URL}/auth/callback`,
+        },
+      });
 
     if (authError) {
-      if (authError.message.includes("already")) {
+      if (authError.message?.toLowerCase().includes("already")) {
         return res.status(400).json({
-          error: "This email is already registered. Please log in.",
+          message:
+            "This email is already registered. Please log in.",
         });
       }
       throw authError;
@@ -141,26 +177,28 @@ router.post("/", async (req, res) => {
 
     const userId = authData.user.id;
 
-    /* ------------------ 4️⃣ Create profile ------------------ */
-    const { error: profileError } = await supabase.from("profiles").insert({
-      id: userId,
-      full_name,
-      email,
-      role_id: role.id,
-      church_id: church.id,
-    });
+    /* ------------------ 4️⃣ Create profile (ADMIN) ------------------ */
+    const { error: profileError } = await supabaseAdmin
+      .from("profiles")
+      .insert({
+        id: userId,
+        full_name,
+        email,
+        role_id: role.id,
+        church_id: church.id,
+      });
 
     if (profileError) throw profileError;
 
     /* ------------------ 5️⃣ Done ------------------ */
-    return res.status(201).json({
-      message: "Registration successful. Please check your email to verify.",
+    res.status(201).json({
+      message:
+        "Registration successful. Please check your email to verify your account.",
     });
   } catch (err) {
     console.error("Registration error:", err);
-    return res.status(500).json({
-      error: "Registration failed",
-      details: err.message,
+    res.status(500).json({
+      message: "Registration failed",
     });
   }
 });

@@ -1,7 +1,10 @@
 // backend/routes/auth/login.js
 import express from "express";
 import jwt from "jsonwebtoken";
-import { supabase } from "../../supabaseClient.js"; // ✅ single source of truth
+import {
+  supabaseAuth,
+  supabaseAdmin,
+} from "../../supabaseClient.js";
 
 const router = express.Router();
 
@@ -9,69 +12,67 @@ const router = express.Router();
 router.post("/", async (req, res) => {
   const { email, password } = req.body;
 
-  // Basic validation
   if (!email || !password) {
     return res.status(400).json({
-      error: "Invalid request",
-      details: "Email and password are required",
+      message: "Email and password are required",
     });
   }
 
   try {
-    /* ------------------ 1️⃣ Authenticate user ------------------ */
+    /* -------- 1️⃣ Authenticate user (AUTH CLIENT) -------- */
     const { data: authData, error: authError } =
-      await supabase.auth.signInWithPassword({ email, password });
+      await supabaseAuth.auth.signInWithPassword({
+        email,
+        password,
+      });
 
     if (authError || !authData?.user) {
       return res.status(401).json({
-        error: "Login failed",
-        details: "Invalid email or password",
+        message: "Invalid email or password",
       });
     }
 
-    /* ------------------ 2️⃣ Verify email (Auth is authoritative) ------------------ */
+    /* -------- 2️⃣ Email verification check -------- */
     if (!authData.user.email_confirmed_at) {
       return res.status(403).json({
-        error: "Email not verified",
-        details: "Please verify your email before logging in",
+        message: "Please verify your email before logging in",
       });
     }
 
     const userId = authData.user.id;
 
-    /* ------------------ 3️⃣ Fetch profile + role ------------------ */
-    const { data: profile, error: profileError } = await supabase
-      .from("profiles")
-      .select(
-        `
-        id,
-        email,
-        church_id,
-        roles (
+    /* -------- 3️⃣ Fetch profile + role (ADMIN CLIENT) -------- */
+    const { data: profile, error: profileError } =
+      await supabaseAdmin
+        .from("profiles")
+        .select(
+          `
           id,
-          name
+          email,
+          church_id,
+          roles (
+            id,
+            name
+          )
+        `
         )
-      `
-      )
-      .eq("id", userId)
-      .single();
+        .eq("id", userId)
+        .single();
 
     if (profileError || !profile) {
-      console.error("Profile fetch error:", profileError);
+      console.error(profileError);
       return res.status(401).json({
-        error: "Login failed",
-        details: "Profile not found",
+        message: "Profile not found",
       });
     }
 
     if (!profile.roles) {
       return res.status(500).json({
-        error: "Configuration error",
-        details: "User role is missing",
+        message: "User role is missing",
       });
     }
 
-    /* ------------------ 4️⃣ Generate app JWT ------------------ */
+    /* -------- 4️⃣ Create APP JWT -------- */
     const token = jwt.sign(
       {
         sub: profile.id,
@@ -83,8 +84,8 @@ router.post("/", async (req, res) => {
       { expiresIn: "1h" }
     );
 
-    /* ------------------ 5️⃣ Respond ------------------ */
-    return res.json({
+    /* -------- 5️⃣ Respond -------- */
+    res.json({
       token,
       user: {
         id: profile.id,
@@ -95,9 +96,8 @@ router.post("/", async (req, res) => {
     });
   } catch (err) {
     console.error("Login error:", err);
-    return res.status(500).json({
-      error: "Server error",
-      details: "Something went wrong during login",
+    res.status(500).json({
+      message: "Server error during login",
     });
   }
 });
