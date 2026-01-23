@@ -1,11 +1,9 @@
 // backend/routes/auth/invite.js
 import express from "express";
-import crypto from "crypto";
 
 import { authMiddleware } from "../../middleware/authMiddleware.js";
 import { requireVerified } from "../../middleware/verified.js";
 import requireAdmin from "../../middleware/requireAdmin.js";
-import { sendInviteEmail } from "../../utils/email.js";
 
 const router = express.Router();
 
@@ -17,85 +15,90 @@ async function getRoleId(supabase, roleName) {
     .eq("name", roleName)
     .single();
 
-  if (error || !data) throw new Error(`Role not found: ${roleName}`);
+  if (error || !data) {
+    throw new Error(`Role not found: ${roleName}`);
+  }
+
   return data.id;
 }
 
 // POST /auth/invite — ADMIN ONLY
-router.post("/", authMiddleware, requireVerified, requireAdmin, async (req, res) => {
-  const supabase = req.supabase;
-  const adminId = req.user.id;
-  const churchId = req.user.church_id;
+router.post(
+  "/",
+  authMiddleware,
+  requireVerified,
+  requireAdmin,
+  async (req, res) => {
+    const supabase = req.supabase;
+    const adminId = req.user.id;
+    const churchId = req.user.church_id;
 
-  const { email, password, role_name } = req.body;
+    const { email, role_name } = req.body;
 
-  if (!email || !password || !role_name) {
-    return res.status(400).json({ error: "Email, password, and role_name are required" });
-  }
+    if (!email || !role_name) {
+      return res.status(400).json({
+        error: "Email and role_name are required",
+      });
+    }
 
-  try {
-    // 1️⃣ Prevent duplicate accounts
-    const { data: existing } = await supabase
-      .from("profiles")
-      .select("id")
-      .eq("email", email)
-      .maybeSingle();
+    try {
+      /* ------------------ 1️⃣ Prevent duplicates ------------------ */
+      const { data: existing } = await supabase
+        .from("profiles")
+        .select("id")
+        .eq("email", email)
+        .maybeSingle();
 
-    if (existing) return res.status(409).json({ error: "User with this email already exists" });
+      if (existing) {
+        return res.status(409).json({
+          error: "User with this email already exists",
+        });
+      }
 
-    // 2️⃣ Get role ID
-    const role_id = await getRoleId(supabase, role_name);
+      /* ------------------ 2️⃣ Resolve role ------------------ */
+      const role_id = await getRoleId(supabase, role_name);
 
-    // 3️⃣ Create Supabase Auth user
-    const { data: authUser, error: authError } = await supabase.auth.admin.createUser({
-      email,
-      password,
-      email_confirm: false, // will verify via email_token
-    });
+      /* ------------------ 3️⃣ Create invite via Supabase ------------------ */
+      const { data: inviteData, error: inviteError } =
+        await supabase.auth.admin.inviteUserByEmail(email, {
+          redirectTo: `${process.env.FRONTEND_URL}/auth/callback`,
+        });
 
-    if (authError) throw authError;
+      if (inviteError || !inviteData?.user) {
+        throw inviteError || new Error("Invite failed");
+      }
 
-    // 4️⃣ Generate email verification token
-    const email_token = crypto.randomBytes(32).toString("hex");
+      const userId = inviteData.user.id;
 
-    // 5️⃣ Insert profile metadata
-    const { data: profile, error } = await supabase
-      .from("profiles")
-      .insert([
-        {
-          id: authUser.user.id, // same ID as Supabase Auth user
+      /* ------------------ 4️⃣ Create profile ------------------ */
+      const { error: profileError } = await supabase.from("profiles").insert({
+        id: userId,
+        email,
+        role_id,
+        church_id: churchId,
+        invited_by: adminId,
+      });
+
+      if (profileError) throw profileError;
+
+      /* ------------------ 5️⃣ Done ------------------ */
+      return res.status(201).json({
+        message: "Invite sent successfully",
+        user: {
+          id: userId,
           email,
-          role_id,
+          role_name,
           church_id: churchId,
-          invited_by: adminId,
-          email_confirmed_at: null,
-          email_token,
         },
-      ])
-      .select("*")
-      .single();
-
-    if (error) throw error;
-
-    // 6️⃣ Send invite email
-    const verifyUrl = `${process.env.FRONTEND_URL}/verify-email?token=${email_token}`;
-    await sendInviteEmail(email, verifyUrl);
-
-    res.status(201).json({
-      message: "User invited successfully",
-      user: {
-        id: profile.id,
-        email: profile.email,
-        role_id: profile.role_id,
-        church_id: profile.church_id,
-        email_confirmed_at: profile.email_confirmed_at,
-      },
-    });
-  } catch (err) {
-    console.error("Invite error:", err);
-    res.status(500).json({ error: "Invite failed: " + err.message });
+      });
+    } catch (err) {
+      console.error("Invite error:", err);
+      return res.status(500).json({
+        error: "Invite failed",
+        details: err.message,
+      });
+    }
   }
-});
+);
 
 export default router;
-

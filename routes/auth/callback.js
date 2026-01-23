@@ -4,18 +4,34 @@ import jwt from "jsonwebtoken";
 
 const router = express.Router();
 
-// GET /auth/callback
+/**
+ * GET /auth/callback
+ * Used by Supabase email links (invite, verify, recovery)
+ */
 router.get("/callback", async (req, res) => {
-  const { access_token, refresh_token, type } = req.query;
   const FRONTEND_URL = process.env.FRONTEND_URL;
 
-  if (!access_token || !refresh_token) {
+  /**
+   * ⚠️ Supabase sends tokens in the URL fragment (#),
+   * which the backend CANNOT read.
+   *
+   * This route exists mainly for:
+   * - future custom flows
+   * - compatibility
+   * - defensive redirects
+   */
+
+  const { access_token, type } = req.query;
+
+  // If tokens are missing, redirect safely
+  if (!access_token) {
     return res.redirect(`${FRONTEND_URL}/login`);
   }
 
   try {
-    // 1️⃣ Get user info from Supabase Auth
-    const { data: userData, error: userError } = await req.supabase.auth.getUser(access_token);
+    /* ------------------ 1️⃣ Validate Supabase session ------------------ */
+    const { data: userData, error: userError } =
+      await req.supabase.auth.getUser(access_token);
 
     if (userError || !userData?.user) {
       return res.redirect(`${FRONTEND_URL}/login`);
@@ -23,20 +39,31 @@ router.get("/callback", async (req, res) => {
 
     const user = userData.user;
 
-    // 2️⃣ Password recovery flow
+    /* ------------------ 2️⃣ Password recovery ------------------ */
     if (type === "recovery") {
-      return res.redirect(`${FRONTEND_URL}/reset-password-confirm?token=${access_token}`);
+      return res.redirect(
+        `${FRONTEND_URL}/reset-password-confirm?token=${access_token}`
+      );
     }
 
-    // 3️⃣ Enforce email verification
+    /* ------------------ 3️⃣ Enforce email verification ------------------ */
     if (!user.email_confirmed_at) {
       return res.redirect(`${FRONTEND_URL}/verify-email-info`);
     }
 
-    // 4️⃣ Load profile + role from your database
+    /* ------------------ 4️⃣ Load profile ------------------ */
     const { data: profile, error: profileError } = await req.supabase
       .from("profiles")
-      .select("id, church_id, roles(id, name)")
+      .select(
+        `
+        id,
+        church_id,
+        roles (
+          id,
+          name
+        )
+      `
+      )
       .eq("id", user.id)
       .single();
 
@@ -44,19 +71,22 @@ router.get("/callback", async (req, res) => {
       return res.redirect(`${FRONTEND_URL}/login`);
     }
 
-    // 5️⃣ Issue backend JWT
-    const token = jwt.sign(
+    /* ------------------ 5️⃣ Issue backend JWT ------------------ */
+    const appToken = jwt.sign(
       {
         sub: profile.id,
-        role_id: profile.roles?.id,
+        role_id: profile.roles?.id ?? null,
+        role_name: profile.roles?.name ?? null,
         church_id: profile.church_id,
       },
       process.env.JWT_SECRET,
       { expiresIn: "1h" }
     );
 
-    // 6️⃣ Redirect frontend with JWT
-    return res.redirect(`${FRONTEND_URL}/auth/callback-success?token=${token}`);
+    /* ------------------ 6️⃣ Redirect frontend ------------------ */
+    return res.redirect(
+      `${FRONTEND_URL}/auth/callback-success?token=${appToken}`
+    );
   } catch (err) {
     console.error("Auth callback error:", err);
     return res.redirect(`${FRONTEND_URL}/login`);

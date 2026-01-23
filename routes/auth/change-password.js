@@ -1,49 +1,49 @@
-import express from 'express';
-import { authMiddleware } from '../../middleware/authMiddleware.js'; // verifies JWT
+// backend/routes/auth/change-password.js
+import express from "express";
+import { authMiddleware } from "../../middleware/authMiddleware.js";
 
 const router = express.Router();
 
 // POST /auth/change-password
-router.post('/', authMiddleware, async (req, res) => {
+router.post("/", authMiddleware, async (req, res) => {
   const supabase = req.supabase;
-  const { currentPassword, newPassword } = req.body;
-  const userId = req.user?.id;
+  const { newPassword } = req.body;
 
-  if (!userId) return res.status(401).json({ message: 'Not authenticated' });
-  if (!newPassword) return res.status(400).json({ message: 'New password is required' });
+  if (!req.user?.id) {
+    return res.status(401).json({ message: "Not authenticated" });
+  }
+
+  if (!newPassword || newPassword.length < 8) {
+    return res.status(400).json({
+      message: "New password must be at least 8 characters long",
+    });
+  }
 
   try {
-    // 1️⃣ If currentPassword is provided, verify it with Supabase
-    if (currentPassword) {
-      const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
-        email: req.user.email,
-        password: currentPassword,
-      });
-
-      if (signInError || !signInData.user) {
-        return res.status(400).json({ message: 'Current password is incorrect' });
-      }
-    }
-
-    // 2️⃣ Update password in Supabase Auth
-    const { data, error } = await supabase.auth.admin.updateUserById(userId, {
+    /* ------------------ 1️⃣ Update password ------------------ */
+    const { error } = await supabase.auth.updateUser({
       password: newPassword,
     });
 
-    if (error) throw error;
+    if (error) {
+      return res.status(400).json({
+        message: error.message || "Failed to update password",
+      });
+    }
 
-    // 3️⃣ Optional: log out user by clearing cookies / session
-    res.clearCookie('sb-access-token');
-    res.clearCookie('sb-refresh-token');
+    /* ------------------ 2️⃣ Optional: force re-login ------------------ */
+    res.clearCookie("access_token");
+    res.clearCookie("refresh_token");
 
-    res.json({
-      message: 'Password updated successfully. Please sign in again.',
-      logout: true, // frontend can redirect user to login
+    return res.json({
+      message: "Password updated successfully. Please sign in again.",
+      logout: true,
     });
-
   } catch (err) {
-    console.error('Change password error:', err);
-    res.status(500).json({ message: 'Server error: ' + err.message });
+    console.error("Change password error:", err);
+    return res.status(500).json({
+      message: "Server error. Please try again later.",
+    });
   }
 });
 

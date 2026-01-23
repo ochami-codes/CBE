@@ -1,14 +1,25 @@
-// routes/members.js
+// backend/routes/members.js
 import express from "express";
 import { authMiddleware } from "../middleware/authMiddleware.js";
 import { requireRole } from "../middleware/requireRole.js";
 
 const router = express.Router();
 
+/**
+ * Map departments to tables
+ * (single source of truth)
+ */
 const DEPARTMENT_TABLES = {
   youth: "youth_members",
-  children: "children_members"
+  children: "children_members",
 };
+
+/**
+ * Helper: resolve department table
+ */
+function getDepartmentTable(department) {
+  return DEPARTMENT_TABLES[department] || null;
+}
 
 /**
  * ADD MEMBER
@@ -19,28 +30,37 @@ router.post(
   authMiddleware,
   requireRole(["admin", "pastor", "elder", "youth_leader", "children_leader"]),
   async (req, res) => {
+    const supabase = req.supabase;
     const { department, data } = req.body;
     const { church_id } = req.user;
 
-    const table = DEPARTMENT_TABLES[department];
+    const table = getDepartmentTable(department);
     if (!table) {
-      return res.status(400).json({ message: "Invalid department" });
+      return res.status(400).json({ error: "Invalid department" });
+    }
+
+    if (!data || typeof data !== "object") {
+      return res.status(400).json({ error: "Invalid member data" });
     }
 
     try {
       const payload = {
         ...data,
         church_id,
-        created_at: new Date()
       };
 
-      const { error } = await req.supabase.from(table).insert([payload]);
+      const { error } = await supabase.from(table).insert(payload);
+
       if (error) throw error;
 
-      res.status(201).json({ message: "Member added successfully" });
+      res.status(201).json({
+        message: "Member added successfully",
+      });
     } catch (err) {
       console.error("Add member error:", err);
-      res.status(500).json({ message: err.message });
+      res.status(500).json({
+        error: "Failed to add member",
+      });
     }
   }
 );
@@ -49,34 +69,33 @@ router.post(
  * GET MEMBERS
  * GET /members?department=youth
  */
-router.get(
-  "/",
-  authMiddleware,
-  async (req, res) => {
-    const { department } = req.query;
-    const { church_id } = req.user;
+router.get("/", authMiddleware, async (req, res) => {
+  const supabase = req.supabase;
+  const { department } = req.query;
+  const { church_id } = req.user;
 
-    const table = DEPARTMENT_TABLES[department];
-    if (!table) {
-      return res.status(400).json({ message: "Invalid department" });
-    }
-
-    try {
-      const { data, error } = await req.supabase
-        .from(table)
-        .select("*")
-        .eq("church_id", church_id)
-        .order("created_at", { ascending: false });
-
-      if (error) throw error;
-
-      res.json({ members: data });
-    } catch (err) {
-      console.error("Fetch members error:", err);
-      res.status(500).json({ message: err.message });
-    }
+  const table = getDepartmentTable(department);
+  if (!table) {
+    return res.status(400).json({ error: "Invalid department" });
   }
-);
+
+  try {
+    const { data, error } = await supabase
+      .from(table)
+      .select("*")
+      .eq("church_id", church_id)
+      .order("created_at", { ascending: false });
+
+    if (error) throw error;
+
+    res.json({ members: data });
+  } catch (err) {
+    console.error("Fetch members error:", err);
+    res.status(500).json({
+      error: "Failed to fetch members",
+    });
+  }
+});
 
 /**
  * UPDATE MEMBER
@@ -87,17 +106,22 @@ router.put(
   authMiddleware,
   requireRole(["admin", "pastor", "elder"]),
   async (req, res) => {
+    const supabase = req.supabase;
     const { id } = req.params;
     const { department, updates } = req.body;
     const { church_id } = req.user;
 
-    const table = DEPARTMENT_TABLES[department];
+    const table = getDepartmentTable(department);
     if (!table) {
-      return res.status(400).json({ message: "Invalid department" });
+      return res.status(400).json({ error: "Invalid department" });
+    }
+
+    if (!updates || typeof updates !== "object") {
+      return res.status(400).json({ error: "Invalid update payload" });
     }
 
     try {
-      const { error } = await req.supabase
+      const { error } = await supabase
         .from(table)
         .update(updates)
         .eq("id", id)
@@ -105,9 +129,12 @@ router.put(
 
       if (error) throw error;
 
-      res.json({ message: "Member updated" });
+      res.json({ message: "Member updated successfully" });
     } catch (err) {
-      res.status(500).json({ message: err.message });
+      console.error("Update member error:", err);
+      res.status(500).json({
+        error: "Failed to update member",
+      });
     }
   }
 );
@@ -121,17 +148,18 @@ router.delete(
   authMiddleware,
   requireRole(["admin"]),
   async (req, res) => {
+    const supabase = req.supabase;
     const { id } = req.params;
     const { department } = req.body;
     const { church_id } = req.user;
 
-    const table = DEPARTMENT_TABLES[department];
+    const table = getDepartmentTable(department);
     if (!table) {
-      return res.status(400).json({ message: "Invalid department" });
+      return res.status(400).json({ error: "Invalid department" });
     }
 
     try {
-      const { error } = await req.supabase
+      const { error } = await supabase
         .from(table)
         .delete()
         .eq("id", id)
@@ -139,9 +167,12 @@ router.delete(
 
       if (error) throw error;
 
-      res.json({ message: "Member deleted" });
+      res.json({ message: "Member deleted successfully" });
     } catch (err) {
-      res.status(500).json({ message: err.message });
+      console.error("Delete member error:", err);
+      res.status(500).json({
+        error: "Failed to delete member",
+      });
     }
   }
 );

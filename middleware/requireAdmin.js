@@ -1,7 +1,6 @@
+// middleware/requireAdmin.js
 import { createClient } from "@supabase/supabase-js";
 
-// Optional: we can fetch the Admin role ID from the DB dynamically
-// Or set a fixed env variable if role IDs are stable
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -9,12 +8,12 @@ const supabase = createClient(
 
 export default async function requireAdmin(req, res, next) {
   try {
-    // 1️⃣ authMiddleware must already have run
+    // 1️⃣ Ensure authMiddleware has run
     if (!req.user) {
       return res.status(401).json({ message: "Unauthorized" });
     }
 
-    // 2️⃣ Option A: Compare role_id with Admin role in DB
+    // 2️⃣ Fetch Admin role ID dynamically
     const { data: adminRole, error } = await supabase
       .from("roles")
       .select("id")
@@ -22,9 +21,11 @@ export default async function requireAdmin(req, res, next) {
       .single();
 
     if (error || !adminRole) {
+      console.error("Admin role fetch error:", error);
       return res.status(500).json({ message: "Server error: Admin role not found" });
     }
 
+    // 3️⃣ Verify user's role
     if (req.user.role_id !== adminRole.id) {
       return res.status(403).json({ message: "Admins only" });
     }
@@ -32,7 +33,7 @@ export default async function requireAdmin(req, res, next) {
     // ✅ User is admin, proceed
     next();
   } catch (err) {
-    console.error("requireAdmin error:", err);
+    console.error("requireAdmin middleware error:", err);
     res.status(500).json({ message: "Server error" });
   }
 }

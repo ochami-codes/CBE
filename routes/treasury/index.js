@@ -1,88 +1,122 @@
+// routes/treasury.js
 import express from "express";
-import { supabase } from "../../supabaseClient.js";
+import { authMiddleware } from "../../middleware/authMiddleware.js";
 import { requireRole } from "../../middleware/requireRole.js";
-import { applyDateFilter } from "../../utils/dateFilter.js";
 
 const router = express.Router();
 
-/* ============================
+/* =====================================================
    GET /treasury/overview
-============================ */
-router.get("/overview", async (req, res) => {
-  const churchId = req.user.church_id;
+   Returns treasury summary for the church
+===================================================== */
+router.get(
+  "/overview",
+  authMiddleware,
+  requireRole(["Admin", "Treasurer"]),
+  async (req, res) => {
+    try {
+      const { church_id } = req.user;
 
-  let query = supabase
-    .from("treasury_overview")
-    .select("*")
-    .eq("church_id", churchId)
-    .single();
+      const { data, error } = await req.supabase
+        .from("treasury_overview")
+        .select("*")
+        .eq("church_id", church_id)
+        .single();
 
-  const { data, error } = await query;
+      if (error) throw error;
 
-  if (error) {
-    return res.status(500).json({ error: error.message });
+      res.json(data);
+    } catch (err) {
+      console.error("Treasury overview error:", err);
+      res.status(500).json({ error: "Failed to fetch treasury overview" });
+    }
   }
+);
 
-  res.json(data);
-});
-
-/* ============================
+/* =====================================================
    GET /treasury/fund-groups
-============================ */
-router.get("/fund-groups", async (req, res) => {
-  const churchId = req.user.church_id;
+   List all fund groups for the church
+===================================================== */
+router.get(
+  "/fund-groups",
+  authMiddleware,
+  requireRole(["Admin", "Treasurer"]),
+  async (req, res) => {
+    try {
+      const { church_id } = req.user;
 
-  const { data, error } = await supabase
-    .from("fund_group_totals")
-    .select("*")
-    .eq("church_id", churchId)
-    .order("group_name");
+      const { data, error } = await req.supabase
+        .from("fund_group_totals")
+        .select("*")
+        .eq("church_id", church_id)
+        .order("group_name");
 
-  if (error) {
-    return res.status(500).json({ error: error.message });
+      if (error) throw error;
+
+      res.json(data);
+    } catch (err) {
+      console.error("Fund groups fetch error:", err);
+      res.status(500).json({ error: "Failed to fetch fund groups" });
+    }
   }
+);
 
-  res.json(data);
-});
-
-/* ============================
+/* =====================================================
    GET /treasury/fund-groups/:groupId/funds
-============================ */
-router.get("/fund-groups/:groupId/funds", async (req, res) => {
-  const churchId = req.user.church_id;
-  const { groupId } = req.params;
+   List all funds within a specific fund group
+===================================================== */
+router.get(
+  "/fund-groups/:groupId/funds",
+  authMiddleware,
+  requireRole(["Admin", "Treasurer"]),
+  async (req, res) => {
+    try {
+      const { church_id } = req.user;
+      const { groupId } = req.params;
 
-  const { data, error } = await supabase
-    .from("fund_totals")
-    .select("*")
-    .eq("church_id", churchId)
-    .eq("group_id", groupId)
-    .order("fund_name");
+      const { data, error } = await req.supabase
+        .from("fund_totals")
+        .select("*")
+        .eq("church_id", church_id)
+        .eq("group_id", groupId)
+        .order("fund_name");
 
-  if (error) {
-    return res.status(500).json({ error: error.message });
+      if (error) throw error;
+
+      res.json(data);
+    } catch (err) {
+      console.error(`Funds fetch error for group ${req.params.groupId}:`, err);
+      res.status(500).json({ error: "Failed to fetch funds" });
+    }
   }
+);
 
-  res.json(data);
-});
-
-/* ============================
+/* =====================================================
    GET /treasury/member-giving-summary
-============================ */
-router.get("/member-giving-summary", async (req, res) => {
-  const churchId = req.user.church_id;
+   Returns giving summary per member
+===================================================== */
+router.get(
+  "/member-giving-summary",
+  authMiddleware,
+  requireRole(["Admin", "Treasurer"]),
+  async (req, res) => {
+    try {
+      const { church_id } = req.user;
 
-  const { data, error } = await supabase
-    .from("member_giving_summary")
-    .select("*")
-    .eq("church_id", churchId)
-    .order("full_name");
+      const { data, error } = await req.supabase
+        .from("member_giving_summary")
+        .select("*")
+        .eq("church_id", church_id)
+        .order("full_name");
 
-  if (error) {
-    return res.status(500).json({ error: error.message });
+      if (error) throw error;
+
+      res.json(data);
+    } catch (err) {
+      console.error("Member giving summary error:", err);
+      res.status(500).json({ error: "Failed to fetch member giving summary" });
+    }
   }
-
-  res.json(data);
-});
+);
 
 export default router;

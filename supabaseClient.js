@@ -1,20 +1,16 @@
-import 'dotenv/config';
-import { createClient } from '@supabase/supabase-js';
+// backend/supabaseClient.js
+import { createClient } from "@supabase/supabase-js";
 
-console.log(
-  "SUPABASE_URL:",
-  process.env.SUPABASE_URL ? "OK" : "MISSING"
+const supabaseUrl = process.env.SUPABASE_URL;
+
+// 🔓 Public client (RLS enforced) – auth ONLY
+export const supabaseAuth = createClient(
+  supabaseUrl,
+  process.env.SUPABASE_ANON_KEY
 );
-console.log(
-  "SERVICE_ROLE_KEY:",
-  process.env.SUPABASE_SERVICE_ROLE_KEY ? "OK" : "MISSING"
-);
 
-if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
-  throw new Error("Missing Supabase environment variables");
-}
-
-export const supabase = createClient(
-  process.env.SUPABASE_URL,
+// 🔐 Admin client (RLS bypass) – database access
+export const supabaseAdmin = createClient(
+  supabaseUrl,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );

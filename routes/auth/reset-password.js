@@ -1,6 +1,5 @@
 // backend/routes/auth/reset-password.js
 import express from "express";
-import { supabase } from "../../supabaseClient.js";
 import { sendInviteEmail } from "../../utils/email.js";
 
 const router = express.Router();
@@ -8,25 +7,25 @@ const router = express.Router();
 // POST /auth/reset-password
 router.post("/", async (req, res) => {
   const { email } = req.body;
+  const supabase = req.supabase;
 
   if (!email) {
     return res.status(400).json({ message: "Email is required" });
   }
 
   try {
-    // 1️⃣ Fetch user from Supabase Auth
-    const { data: userData, error: userError } = await supabase.auth.admin.getUserByEmail(email);
+    // 1️⃣ Fetch user using Admin API
+    const { data: userData, error: userError } =
+      await supabase.auth.admin.getUserByEmail(email);
 
-    // Always respond the same to avoid email enumeration
+    // Anti-enumeration: always same response
     if (userError || !userData?.user) {
       return res.json({
         message: "If the email exists, a reset link has been sent.",
       });
     }
 
-    const userId = userData.user.id;
-
-    // 2️⃣ Generate password reset link using Supabase admin API
+    // 2️⃣ Generate reset link
     const { data: resetData, error: resetError } =
       await supabase.auth.admin.generateLink("resetPassword", email);
 
@@ -35,7 +34,7 @@ router.post("/", async (req, res) => {
     const resetLink = resetData?.action_link;
     if (!resetLink) throw new Error("Failed to generate reset link");
 
-    // 3️⃣ Send reset email
+    // 3️⃣ Send email
     await sendInviteEmail({
       to: email,
       subject: "Reset your password",
@@ -48,12 +47,12 @@ router.post("/", async (req, res) => {
       `,
     });
 
-    res.json({
+    return res.json({
       message: "If the email exists, a reset link has been sent.",
     });
   } catch (err) {
     console.error("Reset password error:", err);
-    res.status(500).json({
+    return res.status(500).json({
       message: "Server error. Please try again later.",
     });
   }

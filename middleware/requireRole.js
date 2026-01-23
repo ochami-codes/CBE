@@ -1,21 +1,31 @@
-// middleware/requireRole.js
-export function requireRole(allowedRoles = []) {
-  return (req, res, next) => {
-    try {
-      const user = req.user;
+import { supabaseAdmin } from "../supabaseClient.js";
 
-      if (!user || !user.role) {
-        return res.status(401).json({ message: "Unauthorized: no role found" });
+export function requireRole(allowedRoles = []) {
+  return async (req, res, next) => {
+    try {
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
       }
 
-      if (!allowedRoles.includes(user.role)) {
-        return res.status(403).json({ message: "Forbidden: insufficient role" });
+      // Fetch role name
+      const { data: role, error } = await supabaseAdmin
+        .from("roles")
+        .select("name")
+        .eq("id", req.user.role_id)
+        .single();
+
+      if (error || !role) {
+        return res.status(403).json({ message: "Role not found" });
+      }
+
+      if (!allowedRoles.includes(role.name)) {
+        return res.status(403).json({ message: "Forbidden" });
       }
 
       next();
     } catch (err) {
       console.error("requireRole error:", err);
-      res.status(500).json({ message: "Server error in role check" });
+      res.status(500).json({ message: "Server error" });
     }
   };
 }

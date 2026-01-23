@@ -1,12 +1,15 @@
+// middleware/requireVerified.js
 export function requireVerified(req, res, next) {
   try {
-    // 1️⃣ authMiddleware must have already attached req.user
-    if (!req.user) {
+    const user = req.user;
+
+    if (!user) {
+      console.warn("Unauthorized access attempt (no user) to", req.originalUrl);
       return res.status(401).json({ message: "Unauthorized" });
     }
 
-    // 2️⃣ Check iemaiil_confirmed_at e flag
-    if (!req.user.email_confirmed_at) {
+    if (!user.email_confirmed_at) {
+      console.warn(`User ${user.id} attempted access without verified email`);
       return res.status(403).json({
         message: "Please verify your email before accessing this resource",
       });
@@ -15,7 +18,7 @@ export function requireVerified(req, res, next) {
     // ✅ Verified, proceed
     next();
   } catch (err) {
-    console.error("requireVerified error:", err);
+    console.error("requireVerified middleware error:", err);
     res.status(500).json({ message: "Server error" });
   }
 }

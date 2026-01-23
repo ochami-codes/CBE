@@ -1,30 +1,49 @@
 // backend/routes/dashboard/todaysBirthdays.js
 import express from "express";
-import { supabase } from "../../supabaseClient.js";
 import { authMiddleware } from "../../middleware/authMiddleware.js";
 
 const router = express.Router();
 
-// GET /dashboard/todays-birthdays
+/**
+ * GET /dashboard/todays-birthdays
+ * Returns members in the same church whose birthday is today
+ */
 router.get("/", authMiddleware, async (req, res) => {
+  const supabase = req.supabase;
+  const user = req.user;
+
+  if (!user?.church_id) {
+    return res.status(401).json({
+      error: "Unauthenticated",
+    });
+  }
+
   try {
-    const churchId = req.user.church_id;
     const today = new Date();
-    const month = today.getMonth() + 1; // JS months are 0-based
-    const day = today.getDate();
+    const month = String(today.getMonth() + 1).padStart(2, "0");
+    const day = String(today.getDate()).padStart(2, "0");
+
+    // Match MM-DD regardless of year
+    const matchPattern = `%-${month}-${day}`;
 
     const { data, error } = await supabase
       .from("profiles")
-      .select("full_name, date_of_birth")
-      .eq("church_id", churchId)
-      .ilike("date_of_birth", `%-${month.toString().padStart(2,"0")}-${day.toString().padStart(2,"0")}%`);
+      .select("id, full_name, date_of_birth")
+      .eq("church_id", user.church_id)
+      .ilike("date_of_birth", matchPattern);
 
-    if (error) return res.status(500).json({ error: error.message });
+    if (error) {
+      return res.status(500).json({
+        error: "Failed to fetch birthdays",
+      });
+    }
 
     res.json(data || []);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Server error" });
+    console.error("Today's birthdays error:", err);
+    res.status(500).json({
+      error: "Server error",
+    });
   }
 });
 

@@ -1,23 +1,80 @@
-import express from 'express';
-import dotenv from 'dotenv';
-dotenv.config();
+// backend/routes/events.js
+import express from "express";
+import { authMiddleware } from "../middleware/authMiddleware.js";
+import { requireRole } from "../middleware/requireRole.js";
 
 const router = express.Router();
 
-// Public: list events
-router.get('/', async (req, res) => {
-    const { data, error } = await req.supabase.from('events').select('*');
-    if (error) return res.status(500).json({ error: error.message });
-    res.json(data);
+/**
+ * GET /events
+ * List events for the authenticated user's church
+ */
+router.get("/", authMiddleware, async (req, res) => {
+  const supabase = req.supabase;
+  const { church_id } = req.user;
+
+  try {
+    const { data, error } = await supabase
+      .from("events")
+      .select("*")
+      .eq("church_id", church_id)
+      .order("date", { ascending: true });
+
+    if (error) throw error;
+
+    res.json({ events: data });
+  } catch (err) {
+    console.error("Fetch events error:", err);
+    res.status(500).json({
+      error: "Failed to fetch events",
+    });
+  }
 });
 
-// Protected: create event
-router.post('/',
- async (req, res) => {
+/**
+ * POST /events
+ * Create event (admin / pastor / elder)
+ */
+router.post(
+  "/",
+  authMiddleware,
+  requireRole(["admin", "pastor", "elder"]),
+  async (req, res) => {
+    const supabase = req.supabase;
+    const { church_id } = req.user;
     const { title, date, description } = req.body;
-    const { data, error } = await req.supabase.from('events').insert([{ title, date, description }]);
-    if (error) return res.status(500).json({ error: error.message });
-    res.json(data);
-});
+
+    if (!title || !date) {
+      return res.status(400).json({
+        error: "Title and date are required",
+      });
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from("events")
+        .insert({
+          title,
+          description: description || null,
+          date,
+          church_id,
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      res.status(201).json({
+        message: "Event created successfully",
+        event: data,
+      });
+    } catch (err) {
+      console.error("Create event error:", err);
+      res.status(500).json({
+        error: "Failed to create event",
+      });
+    }
+  }
+);
 
 export default router;

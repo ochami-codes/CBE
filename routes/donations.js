@@ -1,22 +1,74 @@
-import express from 'express';
-import dotenv from 'dotenv';
-dotenv.config();
+// backend/routes/donations.js
+import express from "express";
+import { authMiddleware } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
-// Make donation
-router.post('/', async (req, res) => {
-    const { amount, message } = req.body;
-    const { data, error } = await req.supabase.from('donations').insert([{ user_id: req.user.id, amount, message }]);
-    if (error) return res.status(500).json({ error: error.message });
-    res.json(data);
+/**
+ * POST /donations
+ * Make a donation (authenticated users)
+ */
+router.post("/", authMiddleware, async (req, res) => {
+  const supabase = req.supabase;
+  const { id: user_id, church_id } = req.user;
+  const { amount, message } = req.body;
+
+  if (!amount || amount <= 0) {
+    return res.status(400).json({
+      error: "Valid donation amount is required",
+    });
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from("donations")
+      .insert({
+        user_id,
+        church_id,
+        amount,
+        message: message || null,
+      })
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    res.status(201).json({
+      message: "Donation recorded successfully",
+      donation: data,
+    });
+  } catch (err) {
+    console.error("Create donation error:", err);
+    res.status(500).json({
+      error: "Failed to record donation",
+    });
+  }
 });
 
-// List donations
-router.get('/', async (req, res) => {
-    const { data, error } = await req.supabase.from('donations').select('*');
-    if (error) return res.status(500).json({ error: error.message });
-    res.json(data);
+/**
+ * GET /donations
+ * List donations for current church
+ */
+router.get("/", authMiddleware, async (req, res) => {
+  const supabase = req.supabase;
+  const { church_id } = req.user;
+
+  try {
+    const { data, error } = await supabase
+      .from("donations")
+      .select("*")
+      .eq("church_id", church_id)
+      .order("created_at", { ascending: false });
+
+    if (error) throw error;
+
+    res.json({ donations: data });
+  } catch (err) {
+    console.error("Fetch donations error:", err);
+    res.status(500).json({
+      error: "Failed to fetch donations",
+    });
+  }
 });
 
 export default router;

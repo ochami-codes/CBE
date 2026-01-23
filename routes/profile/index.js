@@ -1,3 +1,4 @@
+// routes/dashboard/profile.js
 import express from "express";
 import { authMiddleware } from "../../middleware/authMiddleware.js";
 
@@ -8,11 +9,11 @@ const router = express.Router();
 -------------------------------------------------- */
 router.get("/", authMiddleware, async (req, res) => {
   try {
-    const userId = req.user.id;
-    const churchId = req.user.church_id;
+    const { id: userId, church_id: churchId } = req.user;
+    const supabase = req.supabase;
 
-    // 1️⃣ Profile + role + church
-    const { data: profile, error: profileError } = await req.supabase
+    // 1️⃣ Fetch profile with role and church info
+    const { data: profile, error: profileError } = await supabase
       .from("profiles")
       .select(`
         id,
@@ -25,10 +26,12 @@ router.get("/", authMiddleware, async (req, res) => {
       .eq("id", userId)
       .single();
 
-    if (profileError) throw profileError;
+    if (profileError || !profile) {
+      return res.status(404).json({ message: "Profile not found" });
+    }
 
-    // 2️⃣ Contribution summary (ledger-based)
-    const { data: rows, error: ledgerError } = await req.supabase
+    // 2️⃣ Fetch contribution summary from ledger
+    const { data: ledgerRows, error: ledgerError } = await supabase
       .from("ledger")
       .select("account, amount")
       .eq("member_id", userId)
@@ -36,25 +39,25 @@ router.get("/", authMiddleware, async (req, res) => {
 
     if (ledgerError) throw ledgerError;
 
-    const contributions = {};
-    rows.forEach(r => {
-      contributions[r.account] =
-        (contributions[r.account] || 0) + Number(r.amount);
-    });
+    const contributions = ledgerRows.reduce((acc, row) => {
+      acc[row.account] = (acc[row.account] || 0) + Number(row.amount);
+      return acc;
+    }, {});
 
     res.json({
       profile: {
+        id: profile.id,
         fullName: profile.full_name,
         phone: profile.phone,
         email: profile.email,
-        role: profile.roles?.name,
-        church: profile.churches,
+        role: profile.roles?.name || null,
+        church: profile.churches || null,
       },
       contributions,
     });
 
   } catch (err) {
-    console.error("Profile GET error:", err);
+    console.error("GET /profile error:", err);
     res.status(500).json({ message: "Failed to load profile" });
   }
 });
@@ -65,32 +68,28 @@ router.get("/", authMiddleware, async (req, res) => {
 router.put("/", authMiddleware, async (req, res) => {
   try {
     const userId = req.user.id;
+    const supabase = req.supabase;
     const { fullName, phone, email } = req.body;
 
     // 1️⃣ Update profile table
-    const { error: profileError } = await req.supabase
+    const { error: profileError } = await supabase
       .from("profiles")
-      .update({
-        full_name: fullName,
-        phone,
-      })
+      .update({ full_name: fullName, phone })
       .eq("id", userId);
 
     if (profileError) throw profileError;
 
-    // 2️⃣ Update email via Supabase Auth (auto verification)
+    // 2️⃣ Update email via Supabase Auth if changed
     if (email && email !== req.user.email) {
-      const { error: authError } =
-        await req.supabase.auth.updateUser({ email });
-
+      const { error: authError } = await supabase.auth.updateUser({ email });
       if (authError) throw authError;
     }
 
     res.json({ success: true });
 
   } catch (err) {
-    console.error("Profile UPDATE error:", err);
-    res.status(500).json({ message: err.message });
+    console.error("PUT /profile error:", err);
+    res.status(500).json({ message: err.message || "Failed to update profile" });
   }
 });
 

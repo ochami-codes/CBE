@@ -1,12 +1,11 @@
-// backend/routes/auth/resend-verification.js
 import express from "express";
-import { supabase } from "../../supabaseClient.js";
 
 const router = express.Router();
 
 // POST /auth/resend-verification
 router.post("/", async (req, res) => {
   const { email } = req.body;
+  const supabase = req.supabase;
 
   if (!email) {
     return res.status(400).json({
@@ -15,7 +14,6 @@ router.post("/", async (req, res) => {
   }
 
   try {
-    // Supabase will resend the signup confirmation email
     const { error } = await supabase.auth.resend({
       type: "signup",
       email,
@@ -25,11 +23,11 @@ router.post("/", async (req, res) => {
     });
 
     if (error) {
+      // Log internally only (anti-enumeration)
       console.error("Resend verification error:", error);
-      // Do NOT expose details (anti-enumeration)
     }
 
-    // Always return same response
+    // Always same response (security best practice)
     return res.json({
       message: "If the email exists, a verification link has been sent.",
     });

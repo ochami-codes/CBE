@@ -3,30 +3,35 @@ import express from "express";
 
 const router = express.Router();
 
+/**
+ * GET /admin/overview
+ * Returns member counts by department
+ */
 router.get("/", async (req, res) => {
   const supabase = req.supabase;
 
   try {
-    const { count: youth, error: youthError } = await supabase
-      .from("members")
-      .select("id", { count: "exact", head: true })
-      .eq("department", "youth");
+    const departments = ["youth", "children", "adults"];
 
-    if (youthError) throw youthError;
+    const counts = {};
 
-    const { count: children, error: childrenError } = await supabase
-      .from("members")
-      .select("id", { count: "exact", head: true })
-      .eq("department", "children");
+    for (const dept of departments) {
+      const { count, error } = await supabase
+        .from("members")
+        .select("id", { count: "exact", head: true })
+        .eq("department", dept);
 
-    if (childrenError) throw childrenError;
+      if (error) throw error;
+      counts[dept] = count || 0;
+    }
 
-    res.json({
-      youth: youth || 0,
-      children: children || 0,
-    });
+    // Optional total
+    counts.total = Object.values(counts).reduce((sum, val) => sum + val, 0);
+
+    res.json(counts);
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    console.error("Overview counts error:", err);
+    res.status(500).json({ message: "Failed to fetch member counts" });
   }
 });
 

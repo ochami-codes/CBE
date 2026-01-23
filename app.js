@@ -1,4 +1,5 @@
-import 'dotenv/config';
+// backend/app.js
+import "dotenv/config";
 import express from "express";
 import cors from "cors";
 
@@ -16,56 +17,51 @@ import verseRoutes from "./routes/daily-verse.js";
 import announcementRoutes from "./routes/announcements.js";
 import myBirthdayRoutes from "./routes/dashboard/myBirthday.js";
 import todaysBirthdayRoutes from "./routes/dashboard/todaysBirthdays.js";
-
 import memberRoutes from "./routes/members.js";
+import attendanceRoutes from "./routes/attendance.js";
+
 import requireAuth from "./middleware/requireAuth.js";
 import requireAdmin from "./middleware/requireAdmin.js";
-import attendanceRoutes from "./routes/attendance.js";
-import { supabase } from "./supabaseClient.js";
+
+import { supabaseAdmin } from "./supabaseClient.js";
 
 const app = express();
 
-// global middleware
+/* ------------------ Global middleware ------------------ */
 app.use(cors());
 app.use(express.json());
 
-// attach supabase client to every request
+/* ------------------ Attach ADMIN Supabase ------------------ */
 app.use((req, res, next) => {
-  req.supabase = supabase;
+  req.supabase = supabaseAdmin;
   next();
 });
 
-/**
- * PUBLIC ROUTES
- */
+/* ------------------ Public routes ------------------ */
 app.use("/auth", authRoutes);
 app.use("/churches", churchRoutes);
 
-/*** Dashboard routes */
+/* ------------------ Dashboard routes ------------------ */
 app.use("/dashboard/daily-verse", verseRoutes);
 app.use("/dashboard/announcements", announcementRoutes);
 app.use("/dashboard/my-birthday", myBirthdayRoutes);
-app.use("/dashboard/todays-birthdays",todaysBirthdayRoutes); 
-/**
- * AUTHENTICATED ROUTES
- */
+app.use("/dashboard/todays-birthdays", todaysBirthdayRoutes);
+
+/* ------------------ Authenticated routes ------------------ */
 app.use("/profile", requireAuth, profileRoutes);
 app.use("/donations", requireAuth, donationRoutes);
 app.use("/events", requireAuth, eventRoutes);
 app.use("/pastor", requireAuth, pastorRoutes);
-app.use("/members", memberRoutes);
-app.use("/attendance", attendanceRoutes);
-app.use("/children", childrenRoutes);
-app.use("/treasury", treasuryRoutes);
-app.use("/treasury/transactions", treasuryTransactionRoutes);
-/**
- * ADMIN ROUTES
- */
+app.use("/members", requireAuth, memberRoutes);
+app.use("/attendance", requireAuth, attendanceRoutes);
+app.use("/children", requireAuth, childrenRoutes);
+app.use("/treasury", requireAuth, treasuryRoutes);
+app.use("/treasury/transactions", requireAuth, treasuryTransactionRoutes);
+
+/* ------------------ Admin routes ------------------ */
 app.use("/admin", requireAuth, requireAdmin, adminRoutes);
 
-/**
- * Health check
- */
+/* ------------------ Health check ------------------ */
 app.get("/", (req, res) => {
   res.json({ status: "API running" });
 });

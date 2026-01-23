@@ -1,4 +1,4 @@
-// routes/attendance.js
+// backend/routes/attendance.js
 import express from "express";
 import { authMiddleware } from "../middleware/authMiddleware.js";
 import { requireRole } from "../middleware/requireRole.js";
@@ -6,68 +6,77 @@ import { requireRole } from "../middleware/requireRole.js";
 const router = express.Router();
 
 /**
- * GET attendance
- * GET /attendance?department=youth&date=2025-01-01
+ * GET /attendance
+ * Query params: department, date
+ * Returns attendance records for a given department on a specific date
  */
 router.get(
   "/",
   authMiddleware,
   requireRole(["admin", "pastor", "elder", "youth_leader"]),
   async (req, res) => {
+    const supabase = req.supabase;
     const { department, date } = req.query;
 
     if (!department || !date) {
-      return res.status(400).json({ message: "department and date are required" });
+      return res.status(400).json({ error: "department and date are required" });
     }
 
-    const { data, error } = await req.supabase
-      .from("attendance")
-      .select("member_id, present")
-      .eq("department", department)
-      .eq("date", date);
+    try {
+      const { data, error } = await supabase
+        .from("attendance")
+        .select("member_id, present")
+        .eq("department", department)
+        .eq("date", date);
 
-    if (error) {
-      return res.status(500).json({ message: error.message });
+      if (error) throw error;
+
+      res.json({ records: data ?? [] });
+    } catch (err) {
+      console.error("Fetch attendance error:", err);
+      res.status(500).json({ error: "Failed to fetch attendance" });
     }
-
-    res.json({ records: data });
   }
 );
 
 /**
- * POST save attendance (UPSERT)
  * POST /attendance
- * body: { records: [] }
+ * body: { records: [{ member_id, department, date, present }] }
+ * UPSERT attendance records
  */
 router.post(
   "/",
   authMiddleware,
   requireRole(["admin", "pastor", "elder", "youth_leader"]),
   async (req, res) => {
+    const supabase = req.supabase;
     const { records } = req.body;
 
-    if (!Array.isArray(records) || !records.length) {
-      return res.status(400).json({ message: "records array is required" });
+    if (!Array.isArray(records) || records.length === 0) {
+      return res.status(400).json({ error: "records array is required" });
     }
 
-    const payload = records.map(r => ({
+    const payload = records.map((r) => ({
       member_id: r.member_id,
       department: r.department,
       date: r.date,
       present: !!r.present,
     }));
 
-    const { error } = await req.supabase
-      .from("attendance")
-      .upsert(payload, {
-        onConflict: ["member_id", "department", "date"],
-      });
+    try {
+      const { error } = await supabase
+        .from("attendance")
+        .upsert(payload, {
+          onConflict: ["member_id", "department", "date"],
+        });
 
-    if (error) {
-      return res.status(500).json({ message: error.message });
+      if (error) throw error;
+
+      res.json({ success: true, message: "Attendance saved successfully" });
+    } catch (err) {
+      console.error("Save attendance error:", err);
+      res.status(500).json({ error: "Failed to save attendance" });
     }
-
-    res.json({ success: true });
   }
 );
 
