@@ -6,9 +6,27 @@ const router = express.Router();
 
 // POST /auth/register
 router.post("/", async (req, res) => {
-  const { full_name, email, password, church_name, church_address } = req.body;
+  const {
+    full_name,
+    email,
+    password,
+    phone,
+    date_of_birth,
+    gender,
+    conference,
+    church_name,
+  } = req.body;
 
-  if (!full_name || !email || !password || !church_name) {
+  if (
+    !full_name ||
+    !email ||
+    !password ||
+    !phone ||
+    !date_of_birth ||
+    !gender ||
+    !conference ||
+    !church_name
+  ) {
     return res.status(400).json({ message: "All required fields must be provided" });
   }
 
@@ -23,14 +41,12 @@ router.post("/", async (req, res) => {
 
     if (churchFetchError) throw churchFetchError;
 
-    const isNewChurch = !existingChurch;
-
     if (existingChurch) {
       church = existingChurch;
     } else {
       const { data: newChurch, error: churchInsertError } = await supabaseAdmin
         .from("churches")
-        .insert({ name: church_name.trim(), address: church_address || null })
+        .insert({ name: church_name.trim() })
         .select()
         .single();
 
@@ -48,62 +64,6 @@ router.post("/", async (req, res) => {
       await supabaseAdmin.from("departments").insert(
         departments.map((name) => ({ name, church_id: church.id }))
       );
-
-      // Seed welcome announcement
-      const { data: commDept } = await supabaseAdmin
-        .from("departments")
-        .select("id")
-        .eq("church_id", church.id)
-        .eq("name", "Communication")
-        .single();
-
-      if (commDept) {
-        await supabaseAdmin.from("announcements").insert({
-          church_id: church.id,
-          title: "Welcome to ChurchApp 🎉",
-          message: "Welcome to our church family! Stay tuned for updates.",
-          department_id: commDept.id,
-        });
-      }
-
-      // Seed treasury fund groups and funds
-      const fundGroups = ["Tithe & Trust", "Local Church", "Special Offerings"];
-      const { data: insertedGroups } = await supabaseAdmin
-        .from("treasury_fund_groups")
-        .insert(fundGroups.map((name) => ({ name, church_id: church.id })))
-        .select();
-
-      const funds = [
-        { name: "Tithe", group: "Tithe & Trust" },
-        { name: "Church Budget", group: "Local Church" },
-        { name: "Building Fund", group: "Local Church" },
-        { name: "Other Local Funds", group: "Local Church" },
-        { name: "Combined Offerings", group: "Special Offerings" },
-        { name: "Camp Meeting", group: "Special Offerings" },
-      ];
-
-      const { data: insertedFunds } = await supabaseAdmin
-        .from("treasury_funds")
-        .insert(
-          funds.map((f) => ({
-            name: f.name,
-            group_id: insertedGroups.find((g) => g.name === f.group)?.id,
-            church_id: church.id,
-          }))
-        )
-        .select();
-
-      if (insertedFunds?.length) {
-        await supabaseAdmin.from("treasury_transactions").insert(
-          insertedFunds.map((f) => ({
-            fund_id: f.id,
-            amount: 0,
-            type: "income",
-            given_by: "system",
-            church_id: church.id,
-          }))
-        );
-      }
     }
 
     /* ------------------ 2️⃣ Role assignment ------------------ */
@@ -123,7 +83,6 @@ router.post("/", async (req, res) => {
       return res.status(500).json({ message: "Role configuration error" });
     }
 
-    // Check if the church already has users
     const { data: existingProfiles, error: profilesError } = await supabaseAdmin
       .from("profiles")
       .select("id")
@@ -158,6 +117,10 @@ router.post("/", async (req, res) => {
         id: userId,
         full_name,
         email,
+        phone,
+        date_of_birth,
+        gender,
+        conference,
         role_id: roleId,
         church_id: church.id,
       });
