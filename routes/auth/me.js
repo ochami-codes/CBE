@@ -9,10 +9,7 @@ router.get("/", authMiddleware, async (req, res) => {
   const userId = req.user?.id;
 
   if (!userId) {
-    return res.status(401).json({
-      user: null,
-      message: "Unauthenticated",
-    });
+    return res.status(200).json({ user: null });
   }
 
   try {
@@ -28,20 +25,24 @@ router.get("/", authMiddleware, async (req, res) => {
           id,
           name
         )
-      `
+        `
       )
       .eq("id", userId)
       .single();
 
+    // ⚠️ IMPORTANT: don't break auth if profile is missing
     if (error || !profile) {
-      console.error("Profile fetch error:", error);
-      return res.status(404).json({
-        user: null,
-        message: "Profile not found",
+      return res.status(200).json({
+        user: {
+          id: userId,
+          role_id: null,
+          role_name: null,
+          incomplete_profile: true,
+        },
       });
     }
 
-    res.json({
+    return res.status(200).json({
       user: {
         id: profile.id,
         email: profile.email,
@@ -53,10 +54,9 @@ router.get("/", authMiddleware, async (req, res) => {
     });
   } catch (err) {
     console.error("GET /auth/me error:", err);
-    res.status(500).json({
-      user: null,
-      message: "Internal server error",
-    });
+
+    // Never trap auth in loading state
+    return res.status(200).json({ user: null });
   }
 });
 
