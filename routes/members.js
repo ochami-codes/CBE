@@ -24,23 +24,21 @@ router.post(
     }
 
     try {
-      const { error } = await supabase
-        .from("members")
-        .insert({
-          full_name,
-          department,
-          church_id,
-          ...rest,
-        });
+      const { error } = await supabase.from("members").insert({
+        full_name,
+        department,
+        church_id,
+        ...rest,
+      });
 
       if (error) throw error;
 
-      res.status(201).json({
+      return res.status(201).json({
         message: "Member added successfully",
       });
     } catch (err) {
       console.error("Add member error:", err);
-      res.status(500).json({
+      return res.status(500).json({
         message: "Failed to add member",
       });
     }
@@ -71,14 +69,14 @@ router.get("/", authMiddleware, async (req, res) => {
 
     if (error) throw error;
 
-    res.json({ members: data });
+    return res.json({ members: data });
   } catch (err) {
     console.error("Fetch members error:", err);
-    res.status(500).json({
+    return res.status(500).json({
       message: "Failed to fetch members",
     });
   }
-);
+});
 
 /**
  * UPDATE MEMBER
@@ -109,12 +107,12 @@ router.put(
 
       if (error) throw error;
 
-      res.json({
+      return res.json({
         message: "Member updated successfully",
       });
     } catch (err) {
       console.error("Update member error:", err);
-      res.status(500).json({
+      return res.status(500).json({
         message: "Failed to update member",
       });
     }
@@ -143,12 +141,12 @@ router.delete(
 
       if (error) throw error;
 
-      res.json({
+      return res.json({
         message: "Member deleted successfully",
       });
     } catch (err) {
       console.error("Delete member error:", err);
-      res.status(500).json({
+      return res.status(500).json({
         message: "Failed to delete member",
       });
     }
