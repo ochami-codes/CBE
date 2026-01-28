@@ -1,6 +1,5 @@
 // backend/routes/auth/login.js
 import express from "express";
-import jwt from "jsonwebtoken";
 import { supabaseAuth, supabaseAdmin } from "../../supabaseClient.js";
 
 const router = express.Router();
@@ -14,26 +13,27 @@ router.post("/", async (req, res) => {
   }
 
   try {
-    // 1️⃣ Authenticate user with Supabase Auth
-    const { data: authData, error: authError } = await supabaseAuth.auth.signInWithPassword({
+    // 1️⃣ Authenticate user with Supabase Auth (PUBLIC client)
+    const {
+      data: { user, session },
+      error: authError,
+    } = await supabaseAuth.auth.signInWithPassword({
       email,
       password,
     });
 
-    const user = authData.user || authData.session?.user;
-
-    if (authError || !user) {
+    if (authError || !user || !session) {
       return res.status(401).json({ message: "Invalid email or password" });
     }
 
     // 2️⃣ Ensure email is verified
     if (!user.email_confirmed_at) {
-      return res.status(403).json({ message: "Please verify your email before logging in" });
+      return res
+        .status(403)
+        .json({ message: "Please verify your email before logging in" });
     }
 
-    const userId = user.id;
-
-    // 3️⃣ Fetch profile + role using Admin client
+    // 3️⃣ Fetch profile + role (ADMIN client)
     const { data: profile, error: profileError } = await supabaseAdmin
       .from("profiles")
       .select(`
@@ -41,9 +41,9 @@ router.post("/", async (req, res) => {
         full_name,
         email,
         church_id,
-        roles (id, name)
+        roles ( id, name )
       `)
-      .eq("id", userId)
+      .eq("id", user.id)
       .single();
 
     if (profileError || !profile) {
@@ -55,21 +55,9 @@ router.post("/", async (req, res) => {
       return res.status(500).json({ message: "User role is missing" });
     }
 
-    // 4️⃣ Create JWT
-    const token = jwt.sign(
-      {
-        sub: profile.id,
-        role_id: profile.roles.id,
-        role_name: profile.roles.name,
-        church_id: profile.church_id,
-      },
-      process.env.JWT_SECRET,
-      { expiresIn: "1h" }
-    );
-
-    // 5️⃣ Respond with token + user info
+    // 4️⃣ Respond with Supabase access token + user info
     res.json({
-      token,
+      access_token: session.access_token,
       user: {
         id: profile.id,
         fullName: profile.full_name,
