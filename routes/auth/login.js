@@ -14,26 +14,26 @@ router.post("/", async (req, res) => {
 
   try {
     // 1️⃣ Authenticate user with Supabase Auth (PUBLIC client)
-    const {
-      data: { user, session },
-      error: authError,
-    } = await supabaseAuth.auth.signInWithPassword({
+    const { data: authData, error: authError } = await supabaseAuth.auth.signInWithPassword({
       email,
       password,
     });
+
+    const user = authData.user;
+    const session = authData.session;
 
     if (authError || !user || !session) {
       return res.status(401).json({ message: "Invalid email or password" });
     }
 
-    // 2️⃣ Ensure email is verified
+    // 2️⃣ Ensure email is verified in Supabase Auth
     if (!user.email_confirmed_at) {
-      return res
-        .status(403)
-        .json({ message: "Please verify your email before logging in" });
+      return res.status(403).json({
+        message: "Please verify your email before logging in",
+      });
     }
 
-    // 3️⃣ Fetch profile + role (ADMIN client)
+    // 3️⃣ Fetch profile + role using ADMIN client
     const { data: profile, error: profileError } = await supabaseAdmin
       .from("profiles")
       .select(`
@@ -55,7 +55,7 @@ router.post("/", async (req, res) => {
       return res.status(500).json({ message: "User role is missing" });
     }
 
-    // 4️⃣ Respond with Supabase access token + user info
+    // 4️⃣ Return access token + user info
     res.json({
       access_token: session.access_token,
       user: {
