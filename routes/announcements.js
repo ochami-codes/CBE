@@ -1,8 +1,39 @@
-// backend/routes/announcements.js
 import express from "express";
 import { authMiddleware } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
+
+/* --------------------------------------------------
+   Helper: Get or create Communication department
+-------------------------------------------------- */
+async function getCommunicationDepartment(supabase, churchId) {
+  // Try fetch
+  let { data: dept, error } = await supabase
+    .from("departments")
+    .select("id")
+    .eq("church_id", churchId)
+    .ilike("name", "communication")
+    .maybeSingle(); // ✅ prevents PGRST116
+
+  if (error) throw error;
+
+  // Create if missing
+  if (!dept) {
+    const { data: created, error: createError } = await supabase
+      .from("departments")
+      .insert({
+        name: "Communication",
+        church_id: churchId,
+      })
+      .select("id")
+      .single();
+
+    if (createError) throw createError;
+    dept = created;
+  }
+
+  return dept;
+}
 
 /* --------------------------------------------------
    GET /announcements
@@ -12,34 +43,24 @@ router.get("/", async (req, res) => {
   const supabase = req.supabase;
   const { churchId, limit = 5 } = req.query;
 
-  if (!churchId) return res.status(400).json({ error: "churchId is required" });
+  if (!churchId) {
+    return res.status(400).json({ error: "churchId is required" });
+  }
 
   try {
-    // 1️⃣ Get Communication department ID
-    const { data: dept, error: deptError } = await supabase
-      .from("departments")
-      .select("id")
-      .eq("name", "Communication")
-      .eq("church_id", churchId)
-      .single();
+    const dept = await getCommunicationDepartment(supabase, churchId);
 
-    if (deptError || !dept) {
-      console.error("Department fetch error:", deptError);
-      return res.status(500).json({ error: "Communication department not found" });
-    }
-
-    // 2️⃣ Get announcements
     const { data, error } = await supabase
       .from("announcements")
       .select("id, title, message, created_at")
-      .eq("department_id", dept.id)
       .eq("church_id", churchId)
+      .eq("department_id", dept.id)
       .order("created_at", { ascending: false })
       .limit(Number(limit));
 
     if (error) throw error;
 
-    res.json(data ?? []);
+    res.json(data || []);
   } catch (err) {
     console.error("Announcements fetch error:", err);
     res.status(500).json({ error: "Failed to fetch announcements" });
@@ -54,37 +75,26 @@ router.get("/", async (req, res) => {
 router.post("/", authMiddleware, async (req, res) => {
   const supabase = req.supabase;
   const { title, message, churchId } = req.body;
-  const { id: userId } = req.user;
+  const userId = req.user?.id;
 
   if (!title || !message || !churchId) {
-    return res.status(400).json({ error: "title, message, and churchId are required" });
+    return res
+      .status(400)
+      .json({ error: "title, message, and churchId are required" });
   }
 
   try {
-    // Get Communication department ID
-    const { data: dept, error: deptError } = await supabase
-      .from("departments")
-      .select("id")
-      .eq("name", "Communication")
-      .eq("church_id", churchId)
-      .single();
+    const dept = await getCommunicationDepartment(supabase, churchId);
 
-    if (deptError || !dept) {
-      return res.status(500).json({ error: "Communication department not found" });
-    }
-
-    // Insert announcement
     const { data, error } = await supabase
       .from("announcements")
-      .insert([
-        {
-          title,
-          message,
-          church_id: churchId,
-          department_id: dept.id,
-          created_by: userId,
-        },
-      ])
+      .insert({
+        title,
+        message,
+        church_id: churchId,
+        department_id: dept.id,
+        created_by: userId,
+      })
       .select()
       .single();
 
@@ -106,18 +116,14 @@ router.delete("/:id", authMiddleware, async (req, res) => {
   const { id } = req.params;
 
   try {
-    // Optionally, check if the user is allowed to delete (admin or department member)
-    const { data: deleted, error } = await supabase
+    const { data, error } = await supabase
       .from("announcements")
       .delete()
       .eq("id", id)
-      .select();
+      .select()
+      .single();
 
     if (error) throw error;
-
-    if (!deleted || deleted.length === 0) {
-      return res.status(404).json({ error: "Announcement not found" });
-    }
 
     res.json({ success: true });
   } catch (err) {
