@@ -19,7 +19,7 @@ import myBirthdayRoutes from "./routes/dashboard/myBirthday.js";
 import todaysBirthdayRoutes from "./routes/dashboard/todaysBirthdays.js";
 import memberRoutes from "./routes/members.js";
 import attendanceRoutes from "./routes/attendance.js";
-
+import myRequest from "./routes/role-requests.js";
 import { authMiddleware } from "./middleware/authMiddleware.js";
 import requireAdmin from "./middleware/requireAdmin.js";
 
@@ -57,7 +57,7 @@ app.use("/attendance", authMiddleware, attendanceRoutes);
 app.use("/children", authMiddleware, childrenRoutes);
 app.use("/treasury", authMiddleware, treasuryRoutes);
 app.use("/treasury/transactions", authMiddleware, treasuryTransactionRoutes);
-
+app.use("/role-requests", authMiddleware, myRequest);
 /* ------------------ Admin routes ------------------ */
 app.use("/admin", authMiddleware, requireAdmin, adminRoutes);
 

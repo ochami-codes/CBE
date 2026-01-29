@@ -1,17 +1,20 @@
-// backend/routes/admin/role-requests/role-requests.js
+// backend/routes/admin/role-requests.js
 import express from "express";
+import { authMiddleware } from "../../middleware/authMiddleware.js";
+import requireAdmin from "../../middleware/requireAdmin.js";
 
 const router = express.Router();
 
 /**
  * GET /admin/role-requests
  * List pending role requests for this church
+ * Admin-only
  */
-router.get("/", async (req, res) => {
+router.get("/", authMiddleware, requireAdmin, async (req, res) => {
   const supabase = req.supabase;
-  const { church_id } = req.user;
+  const churchId = req.user.church_id;
 
-  if (!church_id) {
+  if (!churchId) {
     return res.status(400).json({ error: "Missing church context" });
   }
 
@@ -23,29 +26,27 @@ router.get("/", async (req, res) => {
         requested_role,
         status,
         created_at,
-        requester:profiles!role_requests_requester_fkey(
+        requester:profiles!role_requests_requested_by_fkey(
           id,
-          full_name
+          full_name,
+          email
         ),
-        target_user:profiles!role_requests_target_user_fkey(
+        member:profiles!role_requests_member_id_fkey(
           id,
-          full_name
+          full_name,
+          email
         )
       `)
-      .eq("church_id", church_id)
+      .eq("church_id", churchId)
       .eq("status", "pending")
       .order("created_at", { ascending: false });
 
     if (error) throw error;
 
-    res.json({
-      requests: data ?? [],
-    });
+    res.json({ requests: data ?? [] });
   } catch (err) {
     console.error("Fetch role requests error:", err);
-    res.status(500).json({
-      error: "Failed to load role requests",
-    });
+    res.status(500).json({ error: "Failed to load role requests" });
   }
 });
 
