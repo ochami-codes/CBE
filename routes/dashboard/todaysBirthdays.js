@@ -13,37 +13,31 @@ router.get("/", authMiddleware, async (req, res) => {
   const user = req.user;
 
   if (!user?.church_id) {
-    return res.status(401).json({
-      error: "Unauthenticated",
-    });
+    return res.status(401).json({ error: "Unauthenticated" });
   }
 
   try {
     const today = new Date();
-    const month = String(today.getMonth() + 1).padStart(2, "0");
-    const day = String(today.getDate()).padStart(2, "0");
+    const month = today.getMonth() + 1;
+    const day = today.getDate();
 
-    // Match MM-DD regardless of year
-    const matchPattern = `%-${month}-${day}`;
-
+    // Query using PostgreSQL extract function for date_of_birth
     const { data, error } = await supabase
       .from("profiles")
       .select("id, full_name, date_of_birth")
       .eq("church_id", user.church_id)
-      .ilike("date_of_birth", matchPattern);
+      .filter("EXTRACT(MONTH FROM date_of_birth)", "eq", month)
+      .filter("EXTRACT(DAY FROM date_of_birth)", "eq", day);
 
     if (error) {
-      return res.status(500).json({
-        error: "Failed to fetch birthdays",
-      });
+      console.error("Today's birthdays error:", error);
+      return res.status(500).json({ error: "Failed to fetch birthdays" });
     }
 
     res.json(data || []);
   } catch (err) {
     console.error("Today's birthdays error:", err);
-    res.status(500).json({
-      error: "Server error",
-    });
+    res.status(500).json({ error: "Server error" });
   }
 });
 

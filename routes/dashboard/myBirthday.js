@@ -6,16 +6,14 @@ const router = express.Router();
 
 /**
  * GET /dashboard/my-birthday
- * Returns logged-in user's name and date of birth
+ * Returns logged-in user's name, date of birth, and isBirthday flag
  */
 router.get("/", authMiddleware, async (req, res) => {
   const supabase = req.supabase;
   const userId = req.user?.id;
 
   if (!userId) {
-    return res.status(401).json({
-      error: "Unauthenticated",
-    });
+    return res.status(401).json({ message: "Unauthenticated" });
   }
 
   try {
@@ -26,20 +24,23 @@ router.get("/", authMiddleware, async (req, res) => {
       .single();
 
     if (error || !data) {
-      return res.status(404).json({
-        error: "Profile not found",
-      });
+      return res.status(404).json({ message: "Profile not found" });
     }
 
+    // Calculate if today is the user's birthday
+    const today = new Date();
+    const dob = new Date(data.date_of_birth);
+    const isBirthday =
+      dob.getMonth() === today.getMonth() && dob.getDate() === today.getDate();
+
     res.json({
-      full_name: data.full_name,
-      date_of_birth: data.date_of_birth,
+      fullName: data.full_name,
+      dateOfBirth: data.date_of_birth,
+      isBirthday,
     });
   } catch (err) {
     console.error("My birthday route error:", err);
-    res.status(500).json({
-      error: "Failed to load birthday information",
-    });
+    res.status(500).json({ message: "Failed to load birthday information" });
   }
 });
 
