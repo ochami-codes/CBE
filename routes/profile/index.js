@@ -6,14 +6,13 @@ const router = express.Router();
 
 /* --------------------------------------------------
    GET /profile
-   Returns the logged-in user's profile and contribution summary
 -------------------------------------------------- */
 router.get("/", authMiddleware, async (req, res) => {
   try {
-    const { id: userId, church_id: churchId } = req.user;
     const supabase = req.supabase;
+    const { id: userId } = req.user;
 
-    // 1️⃣ Fetch profile with role(s) and church(es)
+    /* 1️⃣ Profile + role + church */
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
       .select(`
@@ -21,7 +20,7 @@ router.get("/", authMiddleware, async (req, res) => {
         full_name,
         phone,
         email,
-        roles ( id, name ),
+        roles ( name ),
         churches ( id, name, logo )
       `)
       .eq("id", userId)
@@ -31,35 +30,35 @@ router.get("/", authMiddleware, async (req, res) => {
       return res.status(404).json({ message: "Profile not found" });
     }
 
-    // Safely pick first role and church
-    const role = profile.roles?.[0]?.name || null;
-    const church = profile.churches?.[0] || null;
+    /* 2️⃣ Contribution summary (VIEW) */
+    const { data: contributions, error: givingError } = await supabase
+      .from("member_giving_summary")
+      .select(`
+        fund_name,
+        year,
+        total_amount,
+        yearly_total,
+        overall_total
+      `)
+      .eq("profile_id", userId);
 
-    // 2️⃣ Fetch contribution summary from ledger
-    const { data: ledgerRows, error: ledgerError } = await supabase
-      .from("ledger")
-      .select("account, amount")
-      .eq("member_id", userId)
-      .eq("church_id", churchId);
+    if (givingError) {
+      console.error("Giving summary error:", givingError);
+    }
 
-    if (ledgerError) throw ledgerError;
-
-    const contributions = ledgerRows.reduce((acc, row) => {
-      acc[row.account] = (acc[row.account] || 0) + Number(row.amount || 0);
-      return acc;
-    }, {});
-
+    /* 3️⃣ Response */
     res.json({
       profile: {
         id: profile.id,
-        fullName: profile.full_name,
+        full_name: profile.full_name,
         phone: profile.phone,
         email: profile.email,
-        role,
-        church,
+        role_name: profile.roles?.name || null,
+        church: profile.churches || null,
       },
-      contributions,
+      contributions: contributions || [],
     });
+
   } catch (err) {
     console.error("GET /profile error:", err);
     res.status(500).json({ message: "Failed to load profile" });
@@ -68,39 +67,31 @@ router.get("/", authMiddleware, async (req, res) => {
 
 /* --------------------------------------------------
    PUT /profile
-   Updates the logged-in user's profile
 -------------------------------------------------- */
 router.put("/", authMiddleware, async (req, res) => {
   try {
-    const userId = req.user.id;
     const supabase = req.supabase;
-    const { fullName, phone, email } = req.body;
+    const userId = req.user.id;
+    const { full_name, phone } = req.body;
 
-    if (!fullName && !phone && !email) {
+    if (!full_name && !phone) {
       return res.status(400).json({ message: "No updates provided" });
     }
 
-    // 1️⃣ Update profile table
-    const { error: profileError } = await supabase
+    const { error } = await supabase
       .from("profiles")
       .update({
-        ...(fullName ? { full_name: fullName } : {}),
-        ...(phone ? { phone } : {}),
+        ...(full_name && { full_name }),
+        ...(phone && { phone }),
       })
       .eq("id", userId);
 
-    if (profileError) throw profileError;
+    if (error) throw error;
 
-    // 2️⃣ Update email via Supabase Auth if changed
-    if (email && email !== req.user.email) {
-      const { error: authError } = await supabase.auth.updateUser({ email });
-      if (authError) throw authError;
-    }
-
-    res.json({ success: true, message: "Profile updated successfully" });
+    res.json({ success: true });
   } catch (err) {
     console.error("PUT /profile error:", err);
-    res.status(500).json({ message: err.message || "Failed to update profile" });
+    res.status(500).json({ message: "Failed to update profile" });
   }
 });
 
