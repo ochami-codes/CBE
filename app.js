@@ -20,7 +20,7 @@ import todaysBirthdayRoutes from "./routes/dashboard/todaysBirthdays.js";
 import memberRoutes from "./routes/members.js";
 import attendanceRoutes from "./routes/attendance.js";
 
-import requireAuth from "./middleware/requireAuth.js";
+import { authMiddleware } from "./middleware/authMiddleware.js";
 import requireAdmin from "./middleware/requireAdmin.js";
 
 import { supabaseAdmin } from "./supabaseClient.js";
@@ -48,18 +48,18 @@ app.use("/dashboard/my-birthday", myBirthdayRoutes);
 app.use("/dashboard/todays-birthdays", todaysBirthdayRoutes);
 
 /* ------------------ Authenticated routes ------------------ */
-app.use("/profile", requireAuth, profileRoutes);
-app.use("/donations", requireAuth, donationRoutes);
-app.use("/events", requireAuth, eventRoutes);
-app.use("/pastor", requireAuth, pastorRoutes);
-app.use("/members", requireAuth, memberRoutes);
-app.use("/attendance", requireAuth, attendanceRoutes);
-app.use("/children", requireAuth, childrenRoutes);
-app.use("/treasury", requireAuth, treasuryRoutes);
-app.use("/treasury/transactions", requireAuth, treasuryTransactionRoutes);
+app.use("/profile", authMiddleware, profileRoutes);
+app.use("/donations", authMiddleware, donationRoutes);
+app.use("/events", authMiddleware, eventRoutes);
+app.use("/pastor", authMiddleware, pastorRoutes);
+app.use("/members", authMiddleware, memberRoutes);
+app.use("/attendance", authMiddleware, attendanceRoutes);
+app.use("/children", authMiddleware, childrenRoutes);
+app.use("/treasury", authMiddleware, treasuryRoutes);
+app.use("/treasury/transactions", authMiddleware, treasuryTransactionRoutes);
 
 /* ------------------ Admin routes ------------------ */
-app.use("/admin", requireAuth, requireAdmin, adminRoutes);
+app.use("/admin", authMiddleware, requireAdmin, adminRoutes);
 
 /* ------------------ Health check ------------------ */
 app.get("/", (req, res) => {

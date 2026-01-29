@@ -1,3 +1,4 @@
+// middleware/authMiddleware.js
 import { supabaseAuth, supabaseAdmin } from "../supabaseClient.js";
 
 export async function authMiddleware(req, res, next) {
@@ -10,7 +11,7 @@ export async function authMiddleware(req, res, next) {
 
     const token = authHeader.split(" ")[1];
 
-    // 1️⃣ Verify JWT (PUBLIC client)
+    /* 1️⃣ Verify Supabase access token */
     const {
       data: { user },
       error: authError,
@@ -20,10 +21,10 @@ export async function authMiddleware(req, res, next) {
       return res.status(401).json({ message: "Invalid or expired token" });
     }
 
-    // 2️⃣ Load profile (ADMIN client)
+    /* 2️⃣ Load profile (ADMIN client) */
     const { data: profile, error: profileError } = await supabaseAdmin
       .from("profiles")
-      .select("id, role_id, church_id, email_confirmed_at, email")
+      .select("id, role_id, church_id, email")
       .eq("id", user.id)
       .single();
 
@@ -31,17 +32,12 @@ export async function authMiddleware(req, res, next) {
       return res.status(401).json({ message: "Profile not found" });
     }
 
-    if (!profile.email_confirmed_at) {
-      return res.status(403).json({ message: "Account not verified" });
-    }
-
-    // 3️⃣ Attach user
+    /* 3️⃣ Attach user to request */
     req.user = {
       id: profile.id,
       email: profile.email,
       role_id: profile.role_id,
       church_id: profile.church_id,
-      email_confirmed_at: profile.email_confirmed_at,
     };
 
     next();
