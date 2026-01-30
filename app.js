@@ -16,6 +16,7 @@ import treasuryTransactionRoutes from "./routes/treasury/transactions.js";
 import verseRoutes from "./routes/daily-verse.js";
 import announcementRoutes from "./routes/announcements.js";
 import myBirthdayRoutes from "./routes/dashboard/myBirthday.js";
+import upcomingBirthdays from "./routes/dashboard/upcomingBirthdays.js";
 import todaysBirthdayRoutes from "./routes/dashboard/todaysBirthdays.js";
 import memberRoutes from "./routes/members.js";
 import attendanceRoutes from "./routes/attendance.js";
@@ -44,6 +45,7 @@ app.use("/churches", churchRoutes);
 /* ------------------ Dashboard routes ------------------ */
 app.use("/dashboard/daily-verse", verseRoutes);
 app.use("/dashboard/announcements", announcementRoutes);
+app.use("/dashboard/todays-birthdays", upcomingBirthdays);
 app.use("/dashboard/my-birthday", myBirthdayRoutes);
 app.use("/dashboard/todays-birthdays", todaysBirthdayRoutes);
 

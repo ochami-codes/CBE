@@ -6,7 +6,7 @@ const router = express.Router();
 
 /**
  * GET /dashboard/my-birthday
- * Returns logged-in user's name, date of birth, and isBirthday flag
+ * Returns logged-in user's birthday info
  */
 router.get("/", authMiddleware, async (req, res) => {
   const supabase = req.supabase;
@@ -23,19 +23,27 @@ router.get("/", authMiddleware, async (req, res) => {
       .eq("id", userId)
       .single();
 
-    if (error || !data) {
+    if (error) {
+      console.error("Birthday fetch error:", error);
       return res.status(404).json({ message: "Profile not found" });
     }
 
-    // Calculate if today is the user's birthday
+    if (!data?.date_of_birth) {
+      return res.json({
+        birthday: null,
+        isBirthday: false,
+      });
+    }
+
     const today = new Date();
     const dob = new Date(data.date_of_birth);
+
     const isBirthday =
-      dob.getMonth() === today.getMonth() && dob.getDate() === today.getDate();
+      dob.getMonth() === today.getMonth() &&
+      dob.getDate() === today.getDate();
 
     res.json({
-      fullName: data.full_name,
-      dateOfBirth: data.date_of_birth,
+      birthday: data.date_of_birth, // 🔑 normalized name
       isBirthday,
     });
   } catch (err) {

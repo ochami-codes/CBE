@@ -18,25 +18,29 @@ router.get("/", authMiddleware, async (req, res) => {
 
   try {
     const today = new Date();
-    const month = today.getMonth() + 1;
-    const day = today.getDate();
+    const mm = String(today.getMonth() + 1).padStart(2, "0");
+    const dd = String(today.getDate()).padStart(2, "0");
+    const todayKey = `${mm}-${dd}`;
 
-    // Query using PostgreSQL extract function for date_of_birth
     const { data, error } = await supabase
       .from("profiles")
       .select("id, full_name, date_of_birth")
       .eq("church_id", user.church_id)
-      .filter("EXTRACT(MONTH FROM date_of_birth)", "eq", month)
-      .filter("EXTRACT(DAY FROM date_of_birth)", "eq", day);
+      .not("date_of_birth", "is", null)
+      .filter(
+        "to_char(date_of_birth, 'MM-DD')",
+        "eq",
+        todayKey
+      );
 
     if (error) {
       console.error("Today's birthdays error:", error);
       return res.status(500).json({ error: "Failed to fetch birthdays" });
     }
 
-    res.json(data || []);
+    res.json(data ?? []);
   } catch (err) {
-    console.error("Today's birthdays error:", err);
+    console.error("Today's birthdays route error:", err);
     res.status(500).json({ error: "Server error" });
   }
 });
