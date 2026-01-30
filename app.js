@@ -45,7 +45,7 @@ app.use("/churches", churchRoutes);
 /* ------------------ Dashboard routes ------------------ */
 app.use("/dashboard/daily-verse", verseRoutes);
 app.use("/dashboard/announcements", announcementRoutes);
-app.use("/dashboard/todays-birthdays", upcomingBirthdays);
+app.use("/dashboard/upcoming-birthdays", upcomingBirthdays);
 app.use("/dashboard/my-birthday", myBirthdayRoutes);
 app.use("/dashboard/todays-birthdays", todaysBirthdayRoutes);
 
