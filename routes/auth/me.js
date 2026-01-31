@@ -1,3 +1,4 @@
+// routes/auth/me.js
 import express from "express";
 import { authMiddleware } from "../../middleware/authMiddleware.js";
 import { supabaseAdmin } from "../../supabaseClient.js";
@@ -30,7 +31,7 @@ router.get("/", authMiddleware, async (req, res) => {
       .eq("id", userId)
       .single();
 
-    // ⚠️ IMPORTANT: don't break auth if profile is missing
+    // ⚠️ If profile is missing, still return user info
     if (error || !profile) {
       return res.status(200).json({
         user: {
@@ -42,6 +43,15 @@ router.get("/", authMiddleware, async (req, res) => {
       });
     }
 
+    // Normalize role_name for consistency
+    const roleNameRaw = profile.roles?.name || null;
+    const role_name =
+      roleNameRaw?.toLowerCase() === "admin"
+        ? "Admin"
+        : roleNameRaw
+        ? roleNameRaw
+        : null;
+
     return res.status(200).json({
       user: {
         id: profile.id,
@@ -49,13 +59,12 @@ router.get("/", authMiddleware, async (req, res) => {
         full_name: profile.full_name,
         church_id: profile.church_id,
         role_id: profile.roles?.id ?? null,
-        role_name: profile.roles?.name ?? null,
+        role_name,
       },
     });
   } catch (err) {
     console.error("GET /auth/me error:", err);
 
-    // Never trap auth in loading state
     return res.status(200).json({ user: null });
   }
 });
