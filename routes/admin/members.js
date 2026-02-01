@@ -169,7 +169,7 @@ router.put(
 router.put(
   "/:id/role",
   authMiddleware,
-  requireAdmin,
+  requireRole(["Admin"]),
   async (req, res) => {
     const supabase = req.supabase;
     const { id } = req.params;
