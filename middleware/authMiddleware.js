@@ -21,10 +21,19 @@ export async function authMiddleware(req, res, next) {
       return res.status(401).json({ message: "Invalid or expired token" });
     }
 
-    /* 2️⃣ Load profile (ADMIN client) */
+    /* 2️⃣ Load profile WITH role name */
     const { data: profile, error: profileError } = await supabaseAdmin
       .from("profiles")
-      .select("id, role_id, church_id, email")
+      .select(`
+        id,
+        email,
+        church_id,
+        role_id,
+        roles (
+          id,
+          name
+        )
+      `)
       .eq("id", user.id)
       .single();
 
@@ -32,12 +41,13 @@ export async function authMiddleware(req, res, next) {
       return res.status(401).json({ message: "Profile not found" });
     }
 
-    /* 3️⃣ Attach user to request */
+    /* 3️⃣ Attach normalized user */
     req.user = {
       id: profile.id,
       email: profile.email,
-      role_id: profile.role_id,
       church_id: profile.church_id,
+      role_id: profile.role_id,
+      role_name: profile.roles?.name ?? null,
     };
 
     next();
