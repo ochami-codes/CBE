@@ -165,51 +165,46 @@ router.put(
     }
   }
 );
-/**
- * UPDATE MEMBER ROLE
- * PUT /members/:id/role
- */
+// PUT /admin/members/:id/role
 router.put(
   "/:id/role",
   authMiddleware,
-  requireRole(["Admin"]),
+  requireAdmin,
   async (req, res) => {
     const supabase = req.supabase;
-    const { id } = req.params;               // member id
-    const { role_id } = req.body;            // frontend sends { role_id: "xyz" }
+    const { id } = req.params;
+    const { role_name } = req.body;
     const { church_id } = req.user;
 
-    if (!role_id) {
-      return res.status(400).json({ message: "role_id is required" });
+    if (!role_name) {
+      return res.status(400).json({ message: "role_name is required" });
     }
 
     try {
-      // 1️⃣ Get the profile_id linked to this member
-      const { data: member, error: memberError } = await supabase
-        .from("members")
-        .select("profile_id")
-        .eq("id", id)
-        .eq("church_id", church_id)
+      // 1️⃣ Look up role ID by name
+      const { data: role, error: roleError } = await supabase
+        .from("roles")
+        .select("id")
+        .eq("name", role_name)
         .single();
 
-      if (memberError || !member) {
-        return res.status(404).json({ message: "Member not found" });
+      if (roleError || !role) {
+        return res.status(400).json({ message: "Invalid role" });
       }
 
-      // 2️⃣ Update the role_id in the profiles table
-      const { error: updateError } = await supabase
-        .from("profiles")
-        .update({ role_id })
-        .eq("id", member.profile_id);
+      // 2️⃣ Update member.role_id
+      const { error } = await supabase
+        .from("members")
+        .update({ role_id: role.id })
+        .eq("id", id)
+        .eq("church_id", church_id);
 
-      if (updateError) throw updateError;
+      if (error) throw error;
 
-      return res.json({ message: "Member role updated successfully" });
+      res.json({ message: "Member role updated" });
     } catch (err) {
       console.error("Update member role error:", err);
-      return res.status(500).json({
-        message: "Failed to update member role",
-      });
+      res.status(500).json({ message: "Failed to update role" });
     }
   }
 );
