@@ -11,7 +11,7 @@ const router = express.Router();
 router.post(
   "/",
   authMiddleware,
-  requireRole(["admin", "pastor", "elder"]),
+  requireRole(["Admin"]),
   async (req, res) => {
     const supabase = req.supabase;
     const { church_id } = req.user;
@@ -101,7 +101,7 @@ router.get("/", authMiddleware, async (req, res) => {
  * UPDATE MEMBER GENERIC
  * PUT /members/:id
  */
-router.put("/:id", authMiddleware, requireRole(["admin", "pastor", "elder"]), async (req, res) => {
+router.put("/:id", authMiddleware, requireRole(["Admin"]), async (req, res) => {
   const supabase = req.supabase;
   const { id } = req.params;
   const { updates } = req.body;
@@ -123,33 +123,58 @@ router.put("/:id", authMiddleware, requireRole(["admin", "pastor", "elder"]), as
 });
 
 /**
- * UPDATE MEMBER ROLE ONLY
+ * UPDATE MEMBER ROLE
  * PUT /members/:id/role
  */
-router.put("/:id/role", authMiddleware, requireRole(["admin", "pastor", "elder"]), async (req, res) => {
-  const supabase = req.supabase;
-  const { id } = req.params;
-  const { role_id } = req.body;
-  const { church_id } = req.user;
+router.put(
+  "/:id/role",
+  authMiddleware,
+  requireRole(["Admin"]),
+  async (req, res) => {
+    const supabase = req.supabase;
+    const { id } = req.params;               // member id
+    const { role_id } = req.body;            // frontend sends { role_id: "xyz" }
+    const { church_id } = req.user;
 
-  if (!role_id) return res.status(400).json({ message: "role_id is required" });
+    if (!role_id) {
+      return res.status(400).json({ message: "role_id is required" });
+    }
 
-  try {
-    const { error } = await supabase.from("members").update({ role_id }).eq("id", id).eq("church_id", church_id);
-    if (error) throw error;
+    try {
+      // 1️⃣ Get the profile_id linked to this member
+      const { data: member, error: memberError } = await supabase
+        .from("members")
+        .select("profile_id")
+        .eq("id", id)
+        .eq("church_id", church_id)
+        .single();
 
-    return res.json({ message: "Member role updated successfully" });
-  } catch (err) {
-    console.error("Update member role error:", err);
-    return res.status(500).json({ message: "Failed to update member role" });
+      if (memberError || !member) {
+        return res.status(404).json({ message: "Member not found" });
+      }
+
+      // 2️⃣ Update the role_id in the profiles table
+      const { error: updateError } = await supabase
+        .from("profiles")
+        .update({ role_id })
+        .eq("id", member.profile_id);
+
+      if (updateError) throw updateError;
+
+      return res.json({ message: "Member role updated successfully" });
+    } catch (err) {
+      console.error("Update member role error:", err);
+      return res.status(500).json({
+        message: "Failed to update member role",
+      });
+    }
   }
-});
-
+);
 /**
  * DELETE MEMBER
  * DELETE /members/:id
  */
-router.delete("/:id", authMiddleware, requireRole(["admin"]), async (req, res) => {
+router.delete("/:id", authMiddleware, requireRole(["Admin"]), async (req, res) => {
   const supabase = req.supabase;
   const { id } = req.params;
   const { church_id } = req.user;
