@@ -98,30 +98,73 @@ router.get("/", authMiddleware, async (req, res) => {
 });
 
 /**
- * UPDATE MEMBER GENERIC
+ * UPDATE MEMBER
  * PUT /members/:id
  */
-router.put("/:id", authMiddleware, requireRole(["Admin"]), async (req, res) => {
-  const supabase = req.supabase;
-  const { id } = req.params;
-  const { updates } = req.body;
-  const { church_id } = req.user;
+router.put(
+  "/:id",
+  authMiddleware,
+  requireRole(["Admin"]),
+  async (req, res) => {
+    const supabase = req.supabase;
+    const { id } = req.params;
+    const { updates } = req.body;
+    const { church_id } = req.user;
 
-  if (!updates || typeof updates !== "object") {
-    return res.status(400).json({ message: "Invalid update payload" });
+    if (!updates || typeof updates !== "object") {
+      return res.status(400).json({
+        message: "Invalid update payload",
+      });
+    }
+
+    try {
+      // 1️⃣ Fetch the member to see if it's linked to a profile
+      const { data: member, error: fetchError } = await supabase
+        .from("members")
+        .select("id, profile_id")
+        .eq("id", id)
+        .eq("church_id", church_id)
+        .single();
+
+      if (fetchError || !member) {
+        return res.status(404).json({ message: "Member not found" });
+      }
+
+      // 2️⃣ If member has a linked profile and role_id is being updated, update profiles table
+      if (member.profile_id && "role_id" in updates) {
+        const { role_id } = updates;
+
+        const { error: profileError } = await supabase
+          .from("profiles")
+          .update({ role_id })
+          .eq("id", member.profile_id);
+
+        if (profileError) throw profileError;
+
+        // Remove role_id from updates to avoid updating members table
+        delete updates.role_id;
+      }
+
+      // 3️⃣ Update remaining fields in members table
+      if (Object.keys(updates).length > 0) {
+        const { error: memberError } = await supabase
+          .from("members")
+          .update(updates)
+          .eq("id", id)
+          .eq("church_id", church_id);
+
+        if (memberError) throw memberError;
+      }
+
+      return res.json({ message: "Member updated successfully" });
+    } catch (err) {
+      console.error("Update member error:", err);
+      return res.status(500).json({
+        message: "Failed to update member",
+      });
+    }
   }
-
-  try {
-    const { error } = await supabase.from("members").update(updates).eq("id", id).eq("church_id", church_id);
-    if (error) throw error;
-
-    return res.json({ message: "Member updated successfully" });
-  } catch (err) {
-    console.error("Update member error:", err);
-    return res.status(500).json({ message: "Failed to update member" });
-  }
-});
-
+);
 /**
  * UPDATE MEMBER ROLE
  * PUT /members/:id/role
