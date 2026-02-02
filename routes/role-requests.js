@@ -21,7 +21,9 @@ const ALLOWED_ROLES = [
 router.post("/", authMiddleware, async (req, res) => {
   const supabase = req.supabase;
   const { requested_role } = req.body;
+
   const member_id = req.user.id;
+  const requested_by = req.user.id; // ✅ REQUIRED by DB
   const church_id = req.user.church_id;
 
   if (!requested_role) {
@@ -35,7 +37,13 @@ router.post("/", authMiddleware, async (req, res) => {
   try {
     const { data, error } = await supabase
       .from("role_requests")
-      .insert([{ requested_role, member_id, church_id, status: "pending" }])
+      .insert([{
+        requested_role,
+        member_id,
+        requested_by,
+        church_id,
+        status: "pending",
+      }])
       .select()
       .single();
 
