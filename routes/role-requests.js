@@ -4,6 +4,16 @@ import { authMiddleware } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
+const ALLOWED_ROLES = [
+  "Admin",
+  "Pastor",
+  "Treasurer",
+  "Children_leader",
+  "Youth_leader",
+  "Communication_leader",
+  "Member",
+];
+
 /**
  * POST /role-requests
  * Member submits a role request
@@ -18,6 +28,10 @@ router.post("/", authMiddleware, async (req, res) => {
     return res.status(400).json({ error: "requested_role is required" });
   }
 
+  if (!ALLOWED_ROLES.includes(requested_role)) {
+    return res.status(400).json({ error: "Invalid requested_role" });
+  }
+
   try {
     const { data, error } = await supabase
       .from("role_requests")
@@ -27,7 +41,7 @@ router.post("/", authMiddleware, async (req, res) => {
 
     if (error) throw error;
 
-    res.status(201).json(data);
+    res.status(201).json({ request: data });
   } catch (err) {
     console.error("Submit role request error:", err);
     res.status(500).json({ error: "Failed to submit role request" });
@@ -51,7 +65,7 @@ router.get("/my-requests", authMiddleware, async (req, res) => {
 
     if (error) throw error;
 
-    res.json(data ?? []);
+    res.json({ requests: data ?? [] });
   } catch (err) {
     console.error("Fetch member role requests error:", err);
     res.status(500).json({ error: "Failed to fetch your role requests" });
