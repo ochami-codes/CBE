@@ -4,34 +4,66 @@ import { supabaseAuth, supabaseAdmin } from "../../supabaseClient.js";
 
 const router = express.Router();
 
-// POST /auth/register
+// ------------------ Validation helpers ------------------
+const isValidSdaChurchName = (name) => {
+  if (!name) return false;
+  return name.trim().toLowerCase().endsWith("sda church");
+};
+
+const isValidKenyanPhone = (phone) => {
+  if (!phone) return false;
+  const cleaned = phone.replace(/\s+/g, "");
+  const kenyaPhoneRegex = /^(?:\+254|254|0)(7\d{8}|1\d{8})$/;
+  return kenyaPhoneRegex.test(cleaned);
+};
+
+const normalizeKenyanPhone = (phone) => {
+  let p = phone.replace(/\s+/g, "");
+  if (p.startsWith("0")) p = "254" + p.slice(1);
+  if (p.startsWith("+")) p = p.slice(1);
+  return p;
+};
+
+// ------------------ POST /auth/register ------------------
 router.post("/", async (req, res) => {
-  const {
-    full_name,
-    email,
-    password,
-    phone,
-    date_of_birth,
-    gender,
-    conference,
-    church_name,
-  } = req.body;
-
-  if (
-    !full_name ||
-    !email ||
-    !password ||
-    !phone ||
-    !date_of_birth ||
-    !gender ||
-    !conference ||
-    !church_name
-  ) {
-    return res.status(400).json({ message: "All required fields must be provided" });
-  }
-
   try {
-    /* ------------------ 1️⃣ Church lookup or creation ------------------ */
+    const {
+      full_name,
+      email,
+      password,
+      phone,
+      date_of_birth,
+      gender,
+      conference,
+      church_name,
+    } = req.body;
+
+    // ------------------ 1️⃣ Required fields ------------------
+    if (
+      !full_name ||
+      !email ||
+      !password ||
+      !phone ||
+      !date_of_birth ||
+      !gender ||
+      !conference ||
+      !church_name
+    ) {
+      return res.status(400).json({ message: "All required fields must be provided" });
+    }
+
+    // ------------------ 2️⃣ Validation ------------------
+    if (!isValidSdaChurchName(church_name)) {
+      return res.status(400).json({ message: "Church name must end with 'SDA Church'" });
+    }
+
+    if (!isValidKenyanPhone(phone)) {
+      return res.status(400).json({ message: "Enter a valid Kenyan phone number" });
+    }
+
+    const normalizedPhone = normalizeKenyanPhone(phone);
+
+    // ------------------ 3️⃣ Church lookup / create ------------------
     let church;
     const { data: existingChurch, error: churchFetchError } = await supabaseAdmin
       .from("churches")
@@ -49,11 +81,10 @@ router.post("/", async (req, res) => {
         .insert({ name: church_name.trim() })
         .select()
         .single();
-
       if (churchInsertError) throw churchInsertError;
       church = newChurch;
 
-      // Seed departments
+      // Seed default departments
       const departments = [
         "Children",
         "Youth / Ambassadors",
@@ -66,7 +97,7 @@ router.post("/", async (req, res) => {
       );
     }
 
-    /* ------------------ 2️⃣ Role assignment ------------------ */
+    // ------------------ 4️⃣ Role assignment ------------------
     const { data: adminRole } = await supabaseAdmin
       .from("roles")
       .select("id")
@@ -92,13 +123,11 @@ router.post("/", async (req, res) => {
 
     const roleId = existingProfiles?.length > 0 ? memberRole.id : adminRole.id;
 
-    /* ------------------ 3️⃣ Create auth user ------------------ */
+    // ------------------ 5️⃣ Create auth user ------------------
     const { data: authData, error: authError } = await supabaseAuth.auth.signUp({
       email,
       password,
-      options: {
-        emailRedirectTo: `${process.env.FRONTEND_URL}/auth/callback`,
-      },
+      options: { emailRedirectTo: `${process.env.FRONTEND_URL}/auth/callback` },
     });
 
     if (authError) {
@@ -110,14 +139,14 @@ router.post("/", async (req, res) => {
 
     const userId = authData.user.id;
 
-    /* ------------------ 4️⃣ Create profile ------------------ */
+    // ------------------ 6️⃣ Create profile ------------------
     const { error: profileError } = await supabaseAdmin
       .from("profiles")
       .insert({
         id: userId,
         full_name,
         email,
-        phone,
+        phone: normalizedPhone,
         date_of_birth,
         gender,
         conference,
@@ -127,19 +156,20 @@ router.post("/", async (req, res) => {
 
     if (profileError) throw profileError;
 
-/* ------------------.5️⃣ Create member ------------------ */
-const { error: memberError } = await supabaseAdmin
-  .from("members")
-  .insert({
-    id: userId,              // SAME as auth.users.id
-    full_name,
-    role_name: roleId === adminRole.id ? "Admin" : "Member",
-    active: true,
-    church_id: church.id,
-  });
+    // ------------------ 7️⃣ Create member ------------------
+    const { error: memberError } = await supabaseAdmin
+      .from("members")
+      .insert({
+        id: userId, // same as auth.users.id
+        full_name,
+        role_name: roleId === adminRole.id ? "Admin" : "Member",
+        active: true,
+        church_id: church.id,
+      });
 
-if (memberError) throw memberError;
-    /* ------------------ Done ------------------ */
+    if (memberError) throw memberError;
+
+    // ------------------ 8️⃣ Success ------------------
     res.status(201).json({
       message: "Registration successful. Please check your email to verify your account.",
     });
