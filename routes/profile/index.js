@@ -10,24 +10,26 @@ const router = express.Router();
 router.get("/", authMiddleware, async (req, res) => {
   try {
     const supabase = req.supabase;
-    const { id: userId } = req.user;
+    const { id: userId, church_id } = req.user;
 
-    /* 1️⃣ Profile + role + church */
-    const { data: profile, error: profileError } = await supabase
-      .from("profiles")
+    /* 1️⃣ Fetch member (source of truth for role & active) */
+    const { data: member, error: memberError } = await supabase
+      .from("members")
       .select(`
         id,
         full_name,
-        phone,
-        email,
-        roles ( name ),
-        churches ( id, name, logo )
+        role_name,
+        active,
+        profiles (
+          phone,
+          email
+        )
       `)
       .eq("id", userId)
       .single();
 
-    if (profileError || !profile) {
-      return res.status(404).json({ message: "Profile not found" });
+    if (memberError || !member) {
+      return res.status(404).json({ message: "Member not found" });
     }
 
     /* 2️⃣ Contribution summary (VIEW) */
@@ -49,16 +51,16 @@ router.get("/", authMiddleware, async (req, res) => {
     /* 3️⃣ Response */
     res.json({
       profile: {
-        id: profile.id,
-        full_name: profile.full_name,
-        phone: profile.phone,
-        email: profile.email,
-        role_name: profile.roles?.name || null,
-        church: profile.churches || null,
+        id: member.id,
+        full_name: member.full_name,
+        phone: member.profiles?.phone || null,
+        email: member.profiles?.email || null,
+        role_name: member.role_name || "Member",
+        active: member.active,
+        church_id,
       },
       contributions: contributions || [],
     });
-
   } catch (err) {
     console.error("GET /profile error:", err);
     res.status(500).json({ message: "Failed to load profile" });

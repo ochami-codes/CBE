@@ -1,11 +1,13 @@
-// routes/auth/me.js
 import express from "express";
 import { authMiddleware } from "../../middleware/authMiddleware.js";
 import { supabaseAdmin } from "../../supabaseClient.js";
 
 const router = express.Router();
 
-// GET /auth/me
+/**
+ * GET /auth/me
+ * Source of truth: members table
+ */
 router.get("/", authMiddleware, async (req, res) => {
   const userId = req.user?.id;
 
@@ -14,57 +16,44 @@ router.get("/", authMiddleware, async (req, res) => {
   }
 
   try {
-    const { data: profile, error } = await supabaseAdmin
-      .from("profiles")
-      .select(
-        `
+    const { data, error } = await supabaseAdmin
+      .from("members")
+      .select(`
         id,
-        email,
         full_name,
+        role_name,
+        active,
         church_id,
-        roles (
-          id,
-          name
+        profiles (
+          email
         )
-        `
-      )
+      `)
       .eq("id", userId)
       .single();
 
-    // ⚠️ If profile is missing, still return user info
-    if (error || !profile) {
-      return res.status(200).json({
-        user: {
-          id: userId,
-          role_id: null,
-          role_name: null,
-          incomplete_profile: true,
-        },
+    if (error || !data) {
+      return res.status(200).json({ user: null });
+    }
+
+    // 🚫 Deactivated member
+    if (data.active === false) {
+      return res.status(403).json({
+        error: "Account deactivated",
+        user: null,
       });
     }
 
-    // Normalize role_name for consistency
-    const roleNameRaw = profile.roles?.name || null;
-    const role_name =
-      roleNameRaw?.toLowerCase() === "admin"
-        ? "Admin"
-        : roleNameRaw
-        ? roleNameRaw
-        : null;
-
     return res.status(200).json({
       user: {
-        id: profile.id,
-        email: profile.email,
-        full_name: profile.full_name,
-        church_id: profile.church_id,
-        role_id: profile.roles?.id ?? null,
-        role_name,
+        id: data.id,
+        email: data.profiles?.email ?? null,
+        full_name: data.full_name,
+        church_id: data.church_id,
+        role_name: data.role_name || "Member",
       },
     });
   } catch (err) {
     console.error("GET /auth/me error:", err);
-
     return res.status(200).json({ user: null });
   }
 });

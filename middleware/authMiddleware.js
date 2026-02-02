@@ -1,4 +1,3 @@
-// middleware/authMiddleware.js
 import { supabaseAuth, supabaseAdmin } from "../supabaseClient.js";
 
 export async function authMiddleware(req, res, next) {
@@ -21,33 +20,38 @@ export async function authMiddleware(req, res, next) {
       return res.status(401).json({ message: "Invalid or expired token" });
     }
 
-    /* 2️⃣ Load profile WITH role name */
-    const { data: profile, error: profileError } = await supabaseAdmin
-      .from("profiles")
+    /* 2️⃣ Load member info (source of truth) */
+    const { data: member, error: memberError } = await supabaseAdmin
+      .from("members")
       .select(`
         id,
-        email,
+        full_name,
+        role_name,
+        active,
         church_id,
-        role_id,
-        roles (
-          id,
-          name
+        profiles (
+          email
         )
       `)
       .eq("id", user.id)
       .single();
 
-    if (profileError || !profile) {
-      return res.status(401).json({ message: "Profile not found" });
+    if (memberError || !member) {
+      return res.status(401).json({ message: "Member record not found" });
+    }
+
+    // 🚫 Block deactivated members
+    if (member.active === false) {
+      return res.status(403).json({ message: "Account deactivated" });
     }
 
     /* 3️⃣ Attach normalized user */
     req.user = {
-      id: profile.id,
-      email: profile.email,
-      church_id: profile.church_id,
-      role_id: profile.role_id,
-      role_name: profile.roles?.name ?? null,
+      id: member.id,
+      email: member.profiles?.email ?? null,
+      full_name: member.full_name,
+      church_id: member.church_id,
+      role_name: member.role_name || "Member",
     };
 
     next();
