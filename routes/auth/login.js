@@ -34,7 +34,6 @@ router.post("/", async (req, res) => {
     }
 
     // 3️⃣ Fetch member (source of truth for role & active) using church_id from profiles
-    const supabaseAdmin = req.supabaseAdmin; // make sure you pass admin client
     const { data: member, error: memberError } = await supabaseAdmin
       .from("members")
       .select(`
