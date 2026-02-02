@@ -127,7 +127,19 @@ router.post("/", async (req, res) => {
 
     if (profileError) throw profileError;
 
-    /* ------------------ 5️⃣ Done ------------------ */
+/* ------------------.5️⃣ Create member ------------------ */
+const { error: memberError } = await supabaseAdmin
+  .from("members")
+  .insert({
+    id: userId,              // SAME as auth.users.id
+    full_name,
+    role_name: roleId === adminRole.id ? "Admin" : "Member",
+    active: true,
+    church_id: church.id,
+  });
+
+if (memberError) throw memberError;
+    /* ------------------ Done ------------------ */
     res.status(201).json({
       message: "Registration successful. Please check your email to verify your account.",
     });
