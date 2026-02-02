@@ -1,6 +1,6 @@
 // backend/routes/auth/login.js
 import express from "express";
-import { supabaseAuth } from "../../supabaseClient.js";
+import { supabaseAuth, supabaseAdmin } from "../../supabaseClient.js";
 
 const router = express.Router();
 
