@@ -1,4 +1,3 @@
-// backend/routes/profile/index.js
 import express from "express";
 import { authMiddleware } from "../../middleware/authMiddleware.js";
 
@@ -12,27 +11,71 @@ router.get("/", authMiddleware, async (req, res) => {
     const supabase = req.supabase;
     const { id: userId, church_id } = req.user;
 
-    /* 1️⃣ Fetch member (source of truth for role & active) */
-    const { data: member, error: memberError } = await supabase
+    // 1️⃣ Try to fetch member by profile_id
+    let { data: member, error: memberError } = await supabase
       .from("members")
       .select(`
         id,
         full_name,
         role_name,
         active,
+        profile_id,
         profiles (
           phone,
           email
         )
       `)
-      .eq("id", userId)
+      .eq("profile_id", userId)
       .single();
 
-    if (memberError || !member) {
-      return res.status(404).json({ message: "Member not found" });
+    // 2️⃣ Fallback: fetch by member.id (if profile_id not linked)
+    if (!member) {
+      const { data, error } = await supabase
+        .from("members")
+        .select(`
+          id,
+          full_name,
+          role_name,
+          active,
+          profiles (
+            phone,
+            email
+          )
+        `)
+        .eq("id", userId)
+        .single();
+
+      member = data;
+      memberError = error;
     }
 
-    /* 2️⃣ Contribution summary (VIEW) */
+    // 3️⃣ If still no member, return basic profile from profiles table
+    if (!member) {
+      const { data: profile, error: profileError } = await supabase
+        .from("profiles")
+        .select("id, full_name, phone, email")
+        .eq("id", userId)
+        .single();
+
+      if (profileError || !profile) {
+        return res.status(404).json({ message: "Profile not found" });
+      }
+
+      return res.json({
+        profile: {
+          id: profile.id,
+          full_name: profile.full_name,
+          phone: profile.phone || null,
+          email: profile.email || null,
+          role_name: "Member",
+          active: true,
+          church_id,
+        },
+        contributions: [],
+      });
+    }
+
+    // 4️⃣ Contribution summary (VIEW)
     const { data: contributions, error: givingError } = await supabase
       .from("member_giving_summary")
       .select(`
@@ -48,7 +91,7 @@ router.get("/", authMiddleware, async (req, res) => {
       console.error("Giving summary error:", givingError);
     }
 
-    /* 3️⃣ Response */
+    // 5️⃣ Respond
     res.json({
       profile: {
         id: member.id,
@@ -56,7 +99,7 @@ router.get("/", authMiddleware, async (req, res) => {
         phone: member.profiles?.phone || null,
         email: member.profiles?.email || null,
         role_name: member.role_name || "Member",
-        active: member.active,
+        active: member.active ?? true,
         church_id,
       },
       contributions: contributions || [],

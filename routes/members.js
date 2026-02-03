@@ -58,6 +58,7 @@ router.post(
     }
   }
 );
+
 /**
  * GET MEMBERS
  */
@@ -76,6 +77,7 @@ router.get("/", authMiddleware, async (req, res) => {
         role_name,
         active,
         created_at,
+        profile_id,
         profiles (
           email
         )
@@ -83,7 +85,6 @@ router.get("/", authMiddleware, async (req, res) => {
       .eq("church_id", church_id)
       .order("created_at", { ascending: false });
 
-    // ✅ Partial & case-insensitive match
     if (department) {
       query = query.ilike("department", `%${department}%`);
     }
@@ -94,11 +95,10 @@ router.get("/", authMiddleware, async (req, res) => {
     return res.json({ members: data });
   } catch (err) {
     console.error("Fetch members error:", err);
-    return res.status(500).json({
-      message: "Failed to fetch members",
-    });
+    return res.status(500).json({ message: "Failed to fetch members" });
   }
 });
+
 /**
  * UPDATE MEMBER (safe fields only)
  */
@@ -113,9 +113,7 @@ router.put(
     const { full_name, department } = req.body;
 
     if (!full_name && !department) {
-      return res.status(400).json({
-        message: "Nothing to update",
-      });
+      return res.status(400).json({ message: "Nothing to update" });
     }
 
     try {
@@ -130,14 +128,10 @@ router.put(
 
       if (error) throw error;
 
-      return res.json({
-        message: "Member updated successfully",
-      });
+      return res.json({ message: "Member updated successfully" });
     } catch (err) {
       console.error("Update member error:", err);
-      return res.status(500).json({
-        message: "Failed to update member",
-      });
+      return res.status(500).json({ message: "Failed to update member" });
     }
   }
 );
@@ -163,14 +157,10 @@ router.delete(
 
       if (error) throw error;
 
-      return res.json({
-        message: "Member removed successfully",
-      });
+      return res.json({ message: "Member removed successfully" });
     } catch (err) {
       console.error("Delete member error:", err);
-      return res.status(500).json({
-        message: "Failed to remove member",
-      });
+      return res.status(500).json({ message: "Failed to remove member" });
     }
   }
 );
