@@ -20,22 +20,22 @@ export async function authMiddleware(req, res, next) {
       return res.status(401).json({ message: "Invalid or expired token" });
     }
 
-    /* 2️⃣ Load member info (source of truth) */
-    const { data: member, error: memberError } = await supabaseAdmin
-      .from("members")
-      .select(`
-        id,
-        full_name,
-        role_name,
-        active,
-        church_id,
-        profiles (
-          email
-        )
-      `)
-      .eq("id", user.id)
-      .single();
-
+/* 2️⃣ Load member info (source of truth) */
+const { data: member, error: memberError } = await supabaseAdmin
+  .from("members")
+  .select(`
+    id,
+    full_name,
+    role_name,
+    active,
+    church_id,
+    profile_id,
+    profiles (
+      email
+    )
+  `)
+  .eq("profile_id", user.id)
+  .single();
     if (memberError || !member) {
       return res.status(401).json({ message: "Member record not found" });
     }

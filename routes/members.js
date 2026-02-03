@@ -7,7 +7,7 @@ const router = express.Router();
 /**
  * ADD MEMBER
  * POST /members
- * members.id === profiles.id
+ * profile_id is OPTIONAL
  */
 router.post(
   "/",
@@ -18,32 +18,37 @@ router.post(
     const { church_id } = req.user;
 
     const {
-      id, // 👈 this is profiles.id
       full_name,
       department,
+      profile_id = null, // optional link to profiles.id
       role_name = "Member",
     } = req.body;
 
-    if (!id || !full_name || !department) {
+    if (!full_name || !department) {
       return res.status(400).json({
-        message: "id, full_name and department are required",
+        message: "full_name and department are required",
       });
     }
 
     try {
-      const { error } = await supabase.from("members").insert({
-        id,
-        full_name,
-        department,
-        role_name,
-        church_id,
-        active: true,
-      });
+      const { data, error } = await supabase
+        .from("members")
+        .insert({
+          full_name,
+          department,
+          profile_id,
+          role_name,
+          church_id,
+          active: true,
+        })
+        .select()
+        .single();
 
       if (error) throw error;
 
       return res.status(201).json({
         message: "Member added successfully",
+        member: data,
       });
     } catch (err) {
       console.error("Add member error:", err);
@@ -53,7 +58,6 @@ router.post(
     }
   }
 );
-
 /**
  * GET MEMBERS
  */
