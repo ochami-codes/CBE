@@ -30,7 +30,7 @@ router.post(
       const { data: member, error: fetchError } = await supabase
         .from("members")
         .select("id, active")
-        .eq("profile_id", targetUserId)
+        .eq("id", targetUserId)
         .eq("church_id", churchId)
         .single();
 
@@ -81,7 +81,7 @@ router.post(
       const { data: member, error } = await supabase
         .from("members")
         .select("id, active")
-        .eq("profile_id", targetUserId)
+        .eq("id", targetUserId)
         .eq("church_id", churchId)
         .single();
 
