@@ -7,28 +7,37 @@ const router = express.Router();
 /**
  * ADD MEMBER
  * POST /members
+ * members.id === profiles.id
  */
 router.post(
   "/",
   authMiddleware,
-  requireRole(["admin", "pastor", "elder"]),
+  requireRole(["Admin", "Pastor", "Elder"]),
   async (req, res) => {
     const supabase = req.supabase;
     const { church_id } = req.user;
-    const { full_name, department, ...rest } = req.body;
 
-    if (!full_name || !department) {
+    const {
+      id, // 👈 this is profiles.id
+      full_name,
+      department,
+      role_name = "Member",
+    } = req.body;
+
+    if (!id || !full_name || !department) {
       return res.status(400).json({
-        message: "Full name and department are required",
+        message: "id, full_name and department are required",
       });
     }
 
     try {
       const { error } = await supabase.from("members").insert({
+        id,
         full_name,
         department,
+        role_name,
         church_id,
-        ...rest,
+        active: true,
       });
 
       if (error) throw error;
@@ -47,7 +56,6 @@ router.post(
 
 /**
  * GET MEMBERS
- * GET /members?department=Youth
  */
 router.get("/", authMiddleware, async (req, res) => {
   const supabase = req.supabase;
@@ -57,7 +65,17 @@ router.get("/", authMiddleware, async (req, res) => {
   try {
     let query = supabase
       .from("members")
-      .select("*")
+      .select(`
+        id,
+        full_name,
+        department,
+        role_name,
+        active,
+        created_at,
+        profiles (
+          email
+        )
+      `)
       .eq("church_id", church_id)
       .order("created_at", { ascending: false });
 
@@ -66,7 +84,6 @@ router.get("/", authMiddleware, async (req, res) => {
     }
 
     const { data, error } = await query;
-
     if (error) throw error;
 
     return res.json({ members: data });
@@ -79,29 +96,31 @@ router.get("/", authMiddleware, async (req, res) => {
 });
 
 /**
- * UPDATE MEMBER
- * PUT /members/:id
+ * UPDATE MEMBER (safe fields only)
  */
 router.put(
   "/:id",
   authMiddleware,
-  requireRole(["admin", "pastor", "elder"]),
+  requireRole(["Admin", "Pastor", "Elder"]),
   async (req, res) => {
     const supabase = req.supabase;
     const { id } = req.params;
-    const { updates } = req.body;
     const { church_id } = req.user;
+    const { full_name, department } = req.body;
 
-    if (!updates || typeof updates !== "object") {
+    if (!full_name && !department) {
       return res.status(400).json({
-        message: "Invalid update payload",
+        message: "Nothing to update",
       });
     }
 
     try {
       const { error } = await supabase
         .from("members")
-        .update(updates)
+        .update({
+          ...(full_name && { full_name }),
+          ...(department && { department }),
+        })
         .eq("id", id)
         .eq("church_id", church_id);
 
@@ -120,13 +139,12 @@ router.put(
 );
 
 /**
- * DELETE MEMBER
- * DELETE /members/:id
+ * DELETE MEMBER (authority only, identity remains)
  */
 router.delete(
   "/:id",
   authMiddleware,
-  requireRole(["admin"]),
+  requireRole(["Admin"]),
   async (req, res) => {
     const supabase = req.supabase;
     const { id } = req.params;
@@ -142,12 +160,12 @@ router.delete(
       if (error) throw error;
 
       return res.json({
-        message: "Member deleted successfully",
+        message: "Member removed successfully",
       });
     } catch (err) {
       console.error("Delete member error:", err);
       return res.status(500).json({
-        message: "Failed to delete member",
+        message: "Failed to remove member",
       });
     }
   }

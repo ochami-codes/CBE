@@ -7,6 +7,7 @@ const router = express.Router();
 /**
  * ADD MEMBER
  * POST /members
+ * members.id === profiles.id
  */
 router.post(
   "/",
@@ -15,20 +16,27 @@ router.post(
   async (req, res) => {
     const supabase = req.supabase;
     const { church_id } = req.user;
-    const { full_name, department, ...rest } = req.body;
+    const { id, full_name, department, role_name = "Member" } = req.body;
 
-    if (!full_name || !department) {
+    if (!id || !full_name || !department) {
       return res.status(400).json({
-        message: "Full name and department are required",
+        message: "id (from profiles), full_name, and department are required",
       });
     }
 
     try {
       const { data, error } = await supabase
         .from("members")
-        .insert({ full_name, department, church_id, ...rest })
+        .insert({
+          id, // 👈 ensures linkage to profiles
+          full_name,
+          department,
+          role_name,
+          church_id,
+          active: true,
+        })
         .select()
-        .single(); // return the created row
+        .single();
 
       if (error) throw error;
 
@@ -47,7 +55,6 @@ router.post(
 
 /**
  * GET MEMBERS
- * GET /members?department=Youth
  */
 router.get("/", authMiddleware, async (req, res) => {
   const supabase = req.supabase;
@@ -57,7 +64,15 @@ router.get("/", authMiddleware, async (req, res) => {
   try {
     let query = supabase
       .from("members")
-      .select("*")
+      .select(`
+        id,
+        full_name,
+        department,
+        role_name,
+        active,
+        created_at,
+        profiles (email)
+      `)
       .eq("church_id", church_id)
       .order("created_at", { ascending: false });
 
@@ -77,7 +92,6 @@ router.get("/", authMiddleware, async (req, res) => {
 
 /**
  * UPDATE MEMBER
- * PUT /members/:id
  */
 router.put(
   "/:id",
@@ -86,18 +100,22 @@ router.put(
   async (req, res) => {
     const supabase = req.supabase;
     const { id } = req.params;
-    const { updates } = req.body;
+    const { full_name, department, role_name, active } = req.body;
     const { church_id } = req.user;
 
-    if (!updates || typeof updates !== "object") {
-      return res.status(400).json({ message: "Invalid update payload" });
+    if (!full_name && !department && !role_name && active === undefined) {
+      return res.status(400).json({ message: "Nothing to update" });
     }
 
     try {
-      // Update and return the updated member row
       const { data, error } = await supabase
         .from("members")
-        .update(updates)
+        .update({
+          ...(full_name && { full_name }),
+          ...(department && { department }),
+          ...(role_name && { role_name }),
+          ...(active !== undefined && { active }),
+        })
         .eq("id", id)
         .eq("church_id", church_id)
         .select()
@@ -105,10 +123,7 @@ router.put(
 
       if (error) throw error;
 
-      return res.json({
-        message: "Member updated successfully",
-        member: data, // <-- send back updated member
-      });
+      return res.json({ message: "Member updated successfully", member: data });
     } catch (err) {
       console.error("Update member error:", err);
       return res.status(500).json({ message: "Failed to update member" });
@@ -118,7 +133,6 @@ router.put(
 
 /**
  * DELETE MEMBER
- * DELETE /members/:id
  */
 router.delete(
   "/:id",
@@ -138,10 +152,10 @@ router.delete(
 
       if (error) throw error;
 
-      return res.json({ message: "Member deleted successfully" });
+      return res.json({ message: "Member removed successfully" });
     } catch (err) {
       console.error("Delete member error:", err);
-      return res.status(500).json({ message: "Failed to delete member" });
+      return res.status(500).json({ message: "Failed to remove member" });
     }
   }
 );
