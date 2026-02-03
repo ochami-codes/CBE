@@ -12,7 +12,7 @@ const router = express.Router();
 router.post(
   "/",
   authMiddleware,
-  requireRole(["Admin", "Pastor", "Elder"]),
+  requireRole(["Admin", "Pastor", "Youth_leader"]),
   async (req, res) => {
     const supabase = req.supabase;
     const { church_id } = req.user;
@@ -79,8 +79,9 @@ router.get("/", authMiddleware, async (req, res) => {
       .eq("church_id", church_id)
       .order("created_at", { ascending: false });
 
+    // ✅ Partial & case-insensitive match
     if (department) {
-      query = query.eq("department", department);
+      query = query.ilike("department", `%${department}%`);
     }
 
     const { data, error } = await query;
@@ -94,14 +95,13 @@ router.get("/", authMiddleware, async (req, res) => {
     });
   }
 });
-
 /**
  * UPDATE MEMBER (safe fields only)
  */
 router.put(
   "/:id",
   authMiddleware,
-  requireRole(["Admin", "Pastor", "Elder"]),
+  requireRole(["Admin", "Pastor", "Youth_leader"]),
   async (req, res) => {
     const supabase = req.supabase;
     const { id } = req.params;
@@ -144,7 +144,7 @@ router.put(
 router.delete(
   "/:id",
   authMiddleware,
-  requireRole(["Admin"]),
+  requireRole(["Admin", "Pastor", "Youth_leader"]),
   async (req, res) => {
     const supabase = req.supabase;
     const { id } = req.params;
