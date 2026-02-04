@@ -4,6 +4,7 @@ import { supabaseAdmin } from "../../supabaseClient.js";
 
 const router = express.Router();
 
+// POST /auth/reset-password
 router.post("/", async (req, res) => {
   const { email } = req.body;
 
@@ -13,17 +14,15 @@ router.post("/", async (req, res) => {
 
   try {
     // Supabase sends the reset password email automatically
-    const { data, error } = await supabaseAdmin.auth.admin.resetUserPasswordForEmail(email);
+    const { data, error } = await supabaseAdmin.auth.resetPasswordForEmail(email, {
+      redirectTo: `${process.env.FRONTEND_URL}/auth/reset-password-confirm`,
+    });
 
+    // Always return same message for security (anti-enumeration)
     if (error) {
       console.error("Supabase reset error:", error);
-      // Anti-enumeration: still respond the same
-      return res.json({
-        message: "If the email exists, a reset link has been sent.",
-      });
     }
 
-    // Success (email sent by Supabase)
     return res.json({
       message: "If the email exists, a reset link has been sent.",
     });
