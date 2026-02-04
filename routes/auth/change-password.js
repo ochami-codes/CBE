@@ -1,49 +1,37 @@
 // backend/routes/auth/change-password.js
 import express from "express";
 import { authMiddleware } from "../../middleware/authMiddleware.js";
+import { supabaseAuth } from "../../supabaseClient.js";
 
 const router = express.Router();
 
 // POST /auth/change-password
 router.post("/", authMiddleware, async (req, res) => {
-  const supabase = req.supabase;
   const { newPassword } = req.body;
+  const userId = req.user?.id;
 
-  if (!req.user?.id) {
-    return res.status(401).json({ message: "Not authenticated" });
-  }
-
-  if (!newPassword || newPassword.length < 8) {
-    return res.status(400).json({
-      message: "New password must be at least 8 characters long",
-    });
+  if (!userId) return res.status(401).json({ message: "Not authenticated" });
+  if (!newPassword || newPassword.length < 6) {
+    return res.status(400).json({ message: "New password must be at least 6 characters long" });
   }
 
   try {
-    /* ------------------ 1️⃣ Update password ------------------ */
-    const { error } = await supabase.auth.updateUser({
+    const { data, error } = await supabaseAuth.auth.admin.updateUserById(userId, {
       password: newPassword,
     });
 
     if (error) {
-      return res.status(400).json({
-        message: error.message || "Failed to update password",
-      });
+      return res.status(400).json({ message: error.message || "Failed to update password" });
     }
 
-    /* ------------------ 2️⃣ Optional: force re-login ------------------ */
+    // Optional: force re-login
     res.clearCookie("access_token");
     res.clearCookie("refresh_token");
 
-    return res.json({
-      message: "Password updated successfully. Please sign in again.",
-      logout: true,
-    });
+    return res.json({ message: "Password updated successfully. Please sign in again.", logout: true });
   } catch (err) {
     console.error("Change password error:", err);
-    return res.status(500).json({
-      message: "Server error. Please try again later.",
-    });
+    return res.status(500).json({ message: "Server error. Please try again later." });
   }
 });
 

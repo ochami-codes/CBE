@@ -1,12 +1,11 @@
-// backend/routes/auth/reset-password-confirm.js
 import express from "express";
+import { supabaseAuth } from "../../supabaseClient.js";
 
 const router = express.Router();
 
 // POST /auth/reset-password-confirm
 router.post("/", async (req, res) => {
   const { token, newPassword } = req.body;
-  const supabase = req.supabase;
 
   if (!token || !newPassword) {
     return res.status(400).json({
@@ -15,28 +14,22 @@ router.post("/", async (req, res) => {
   }
 
   try {
-    /* ------------------ 1️⃣ Exchange recovery token ------------------ */
-    const { data: sessionData, error: exchangeError } =
-      await supabase.auth.exchangeCodeForSession(token);
-
-    if (exchangeError || !sessionData?.session) {
-      return res.status(400).json({
-        message: "Invalid or expired reset token",
-      });
-    }
-
-    /* ------------------ 2️⃣ Update password ------------------ */
-    const { error: updateError } = await supabase.auth.updateUser({
+    // Supabase will use the token automatically in the API
+    const { data, error } = await supabaseAuth.auth.updateUser({
       password: newPassword,
+      email: undefined,
+    }, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
     });
 
-    if (updateError) {
+    if (error) {
       return res.status(400).json({
-        message: updateError.message || "Failed to reset password",
+        message: error.message || "Failed to reset password",
       });
     }
 
-    /* ------------------ 3️⃣ Done ------------------ */
     return res.json({
       message: "Password reset successful. You can now sign in.",
     });
