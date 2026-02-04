@@ -1,5 +1,5 @@
 import express from "express";
-import { supabaseAdmin } from "../../supabaseClient.js";
+import { supabaseAuth } from "../../supabaseClient.js"; // ✅ normal client, not admin
 
 const router = express.Router();
 
@@ -8,26 +8,20 @@ router.post("/", async (req, res) => {
   const { token, newPassword } = req.body;
 
   if (!token || !newPassword) {
-    return res.status(400).json({ message: "Reset token and new password are required" });
+    return res
+      .status(400)
+      .json({ message: "Reset token and new password are required" });
   }
 
   try {
-    // 1️⃣ Exchange the recovery token for a session
-    const { data: sessionData, error: sessionError } = await supabaseAdmin.auth.admin.exchangeRecoveryToken(token);
+    // Supabase requires the token to authorize password update
+    const { data, error } = await supabaseAuth.auth.updateUser(
+      { password: newPassword },
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
 
-    if (sessionError || !sessionData?.user) {
-      return res.status(400).json({ message: "Invalid or expired reset token" });
-    }
-
-    const userId = sessionData.user.id;
-
-    // 2️⃣ Update the user's password using Admin API
-    const { error: updateError } = await supabaseAdmin.auth.admin.updateUserById(userId, {
-      password: newPassword,
-    });
-
-    if (updateError) {
-      return res.status(400).json({ message: updateError.message || "Failed to reset password" });
+    if (error) {
+      return res.status(400).json({ message: error.message || "Failed to reset password" });
     }
 
     return res.json({ message: "Password reset successful. You can now sign in." });
