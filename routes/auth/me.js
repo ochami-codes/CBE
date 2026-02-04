@@ -1,21 +1,33 @@
 import express from "express";
-import { authMiddleware } from "../../middleware/authMiddleware.js";
 import { supabaseAdmin } from "../../supabaseClient.js";
+import { supabaseAuth } from "../../supabaseClient.js";
 
 const router = express.Router();
 
 /**
  * GET /auth/me
- * Source of truth: members table
+ * Soft-auth endpoint (never throws)
  */
-router.get("/", authMiddleware, async (req, res) => {
-  const userId = req.user?.id;
-
-  if (!userId) {
-    return res.status(200).json({ user: null });
-  }
-
+router.get("/", async (req, res) => {
   try {
+    const authHeader = req.headers.authorization;
+
+    if (!authHeader?.startsWith("Bearer ")) {
+      return res.status(200).json({ user: null });
+    }
+
+    const token = authHeader.split(" ")[1];
+
+    const {
+      data: { user },
+      error: authError,
+    } = await supabaseAuth.auth.getUser(token);
+
+    if (authError || !user) {
+      return res.status(200).json({ user: null });
+    }
+
+    // Source of truth: members table
     const { data, error } = await supabaseAdmin
       .from("members")
       .select(`
@@ -28,18 +40,17 @@ router.get("/", authMiddleware, async (req, res) => {
           email
         )
       `)
-      .eq("id", userId)
+      .eq("profile_id", user.id)
       .single();
 
     if (error || !data) {
       return res.status(200).json({ user: null });
     }
 
-    // 🚫 Deactivated member
     if (data.active === false) {
       return res.status(403).json({
-        error: "Account deactivated",
         user: null,
+        message: "Account deactivated",
       });
     }
 
