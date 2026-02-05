@@ -13,53 +13,69 @@ router.post("/", async (req, res) => {
   }
 
   try {
-    // 1️⃣ Authenticate user with Supabase Auth (PUBLIC client)
-    const { data: authData, error: authError } = await supabaseAuth.auth.signInWithPassword({
-      email,
-      password,
-    });
+    /* ---------------------------------
+       1️⃣ Authenticate via Supabase Auth
+    ---------------------------------- */
+    const { data, error } =
+      await supabaseAuth.auth.signInWithPassword({
+        email,
+        password,
+      });
 
-    const user = authData.user;
-    const session = authData.session;
-
-    if (authError || !user || !session) {
-      return res.status(401).json({ message: "Invalid email or password" });
+    if (error || !data?.user || !data?.session) {
+      return res.status(401).json({
+        message: "Invalid email or password",
+      });
     }
 
-    // 2️⃣ Ensure email is verified
+    const { user, session } = data;
+
+    /* ---------------------------------
+       2️⃣ Ensure email is verified
+    ---------------------------------- */
     if (!user.email_confirmed_at) {
       return res.status(403).json({
         message: "Please verify your email before logging in",
       });
     }
 
-    // 3️⃣ Fetch member (source of truth for role & active) using church_id from profiles
-    const { data: member, error: memberError } = await supabaseAdmin
-      .from("members")
-      .select(`
-        id,
-        full_name,
-        role_name,
-        active,
-        church_id,
-        profiles (
-          email
-        )
-      `)
-      .eq("id", user.id)
-      .single();
+    /* ---------------------------------
+       3️⃣ Fetch member (source of truth)
+    ---------------------------------- */
+    const { data: member, error: memberError } =
+      await supabaseAdmin
+        .from("members")
+        .select(`
+          id,
+          full_name,
+          role_name,
+          active,
+          church_id,
+          profiles (
+            email
+          )
+        `)
+        .eq("id", user.id)
+        .single();
 
     if (memberError || !member) {
-      return res.status(401).json({ message: "Member not found" });
+      return res.status(401).json({
+        message: "Member record not found",
+      });
     }
 
     if (!member.active) {
-      return res.status(403).json({ message: "Your account has been deactivated" });
+      return res.status(403).json({
+        message: "Your account has been deactivated",
+      });
     }
 
-    // 4️⃣ Return access token + normalized user
-    res.json({
+    /* ---------------------------------
+       4️⃣ Success response
+    ---------------------------------- */
+    return res.json({
       access_token: session.access_token,
+      refresh_token: session.refresh_token,
       user: {
         id: member.id,
         full_name: member.full_name,
@@ -71,7 +87,9 @@ router.post("/", async (req, res) => {
     });
   } catch (err) {
     console.error("Login error:", err);
-    res.status(500).json({ message: "Server error during login" });
+    return res.status(500).json({
+      message: "Server error during login",
+    });
   }
 });
 
