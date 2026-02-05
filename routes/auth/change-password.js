@@ -7,8 +7,16 @@ const router = express.Router();
 // POST /auth/change-password
 router.post("/", authMiddleware, async (req, res) => {
   try {
-    // 1️⃣ Ensure newPassword exists and is a string
-    const newPassword = String(req.body?.newPassword || "");
+    // 1️⃣ Extract newPassword safely
+    let newPassword = req.body?.newPassword;
+
+    // If accidentally an object (e.g., { password: "abc123" }), extract the string
+    if (typeof newPassword === "object" && newPassword !== null) {
+      // Try to get the first string value
+      newPassword = String(newPassword.password || newPassword.newPassword || "");
+    } else {
+      newPassword = String(newPassword || "");
+    }
 
     if (newPassword.length < 6) {
       return res.status(400).json({
@@ -18,7 +26,6 @@ router.post("/", authMiddleware, async (req, res) => {
 
     // 2️⃣ Get Supabase Auth UID from middleware
     const authUserId = req.user?.authUserId;
-
     if (!authUserId) {
       return res.status(401).json({ message: "Authenticated user not found" });
     }
@@ -26,11 +33,11 @@ router.post("/", authMiddleware, async (req, res) => {
     // 3️⃣ Prepare payload for Supabase Admin API
     const payload = { password: newPassword };
 
-    // 🔍 Debug logs (can be removed later)
+    // 🔍 Debug logs
     console.log("Updating password for Auth UID:", authUserId);
     console.log("Payload being sent to Supabase:", payload);
 
-    // 4️⃣ Update password
+    // 4️⃣ Update password in Supabase
     const { error } = await supabaseAdmin.auth.admin.updateUserById(
       authUserId,
       payload
