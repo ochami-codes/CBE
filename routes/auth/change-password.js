@@ -1,6 +1,6 @@
 import express from "express";
 import { authMiddleware } from "../../middleware/authMiddleware.js";
-import { supabaseAuth } from "../../supabaseClient.js";
+import { supabaseAdmin } from "../../supabaseClient.js";
 
 const router = express.Router();
 
@@ -15,10 +15,12 @@ router.post("/", authMiddleware, async (req, res) => {
   }
 
   try {
-    // Use the authenticated user client
-    const { data, error } = await supabaseAuth.auth.updateUser({
-      password: newPassword,
-    });
+    const userId = req.user.id; // from authMiddleware
+
+    const { data, error } =
+      await supabaseAdmin.auth.admin.updateUserById(userId, {
+        password: newPassword,
+      });
 
     if (error) {
       return res.status(400).json({
@@ -26,7 +28,7 @@ router.post("/", authMiddleware, async (req, res) => {
       });
     }
 
-    // Force logout after password change
+    // Force re-login
     res.clearCookie("access_token");
     res.clearCookie("refresh_token");
 
