@@ -1,12 +1,11 @@
 import express from "express";
-import { supabaseAdmin } from "../../supabaseClient.js";
-import { supabaseAuth } from "../../supabaseClient.js";
+import { supabaseAdmin, supabaseAuth } from "../../supabaseClient.js";
 
 const router = express.Router();
 
 /**
  * GET /auth/me
- * Soft-auth endpoint (never throws)
+ * Returns the authenticated user, if token is valid.
  */
 router.get("/", async (req, res) => {
   try {
@@ -18,16 +17,17 @@ router.get("/", async (req, res) => {
 
     const token = authHeader.split(" ")[1];
 
+    // Get the user from Supabase auth
     const {
-      data: { user },
+      data: { user: authUser },
       error: authError,
     } = await supabaseAuth.auth.getUser(token);
 
-    if (authError || !user) {
+    if (authError || !authUser) {
       return res.status(200).json({ user: null });
     }
 
-    // Source of truth: members table
+    // Fetch the member from the members table using members.id
     const { data, error } = await supabaseAdmin
       .from("members")
       .select(`
@@ -40,11 +40,20 @@ router.get("/", async (req, res) => {
           email
         )
       `)
-      .eq("profile_id", user.id)
+      .eq("id", authUser.id) // ✅ Use id, not profile_id
       .single();
 
     if (error || !data) {
-      return res.status(200).json({ user: null });
+      // Fallback: return basic auth info if members row missing
+      return res.status(200).json({
+        user: {
+          id: authUser.id,
+          email: authUser.email,
+          full_name: authUser.user_metadata?.full_name || "Child of God",
+          role_name: "Member",
+          active: true,
+        },
+      });
     }
 
     if (data.active === false) {
@@ -54,10 +63,11 @@ router.get("/", async (req, res) => {
       });
     }
 
+    // Success: return combined member info
     return res.status(200).json({
       user: {
         id: data.id,
-        email: data.profiles?.email ?? null,
+        email: data.profiles?.email ?? authUser.email,
         full_name: data.full_name,
         church_id: data.church_id,
         role_name: data.role_name || "Member",
