@@ -77,9 +77,11 @@ router.get("/", authMiddleware, async (req, res) => {
         role_name,
         active,
         created_at,
-        profile_id,
-        profiles (
-          email
+        profiles:profiles!inner (
+          email,
+          phone,
+          date_of_birth,
+          gender
         )
       `)
       .eq("church_id", church_id)
@@ -92,13 +94,26 @@ router.get("/", authMiddleware, async (req, res) => {
     const { data, error } = await query;
     if (error) throw error;
 
-    return res.json({ members: data });
+    // 🔁 Normalize / flatten for frontend
+    const members = data.map((m) => ({
+      id: m.id,
+      full_name: m.full_name,
+      department: m.department,
+      role_name: m.role_name,
+      active: m.active,
+      created_at: m.created_at,
+      email: m.profiles?.email ?? null,
+      phone: m.profiles?.phone ?? null,
+      date_of_birth: m.profiles?.date_of_birth ?? null,
+      gender: m.profiles?.gender ?? null,
+    }));
+
+    return res.json({ members });
   } catch (err) {
     console.error("Fetch members error:", err);
     return res.status(500).json({ message: "Failed to fetch members" });
   }
 });
-
 /**
  * UPDATE MEMBER (safe fields only)
  */
