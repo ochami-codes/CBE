@@ -1,3 +1,4 @@
+// backend/routes/members.js
 import express from "express";
 import { authMiddleware } from "../middleware/authMiddleware.js";
 import { requireRole } from "../middleware/requireRole.js";
@@ -7,7 +8,6 @@ const router = express.Router();
 /**
  * ADD MEMBER
  * POST /members
- * profile_id is OPTIONAL
  */
 router.post(
   "/",
@@ -17,17 +17,10 @@ router.post(
     const supabase = req.supabase;
     const { church_id } = req.user;
 
-    const {
-      full_name,
-      department,
-      profile_id = null, // optional link to profiles.id
-      role_name = "Member",
-    } = req.body;
+    const { full_name, department, role_name = "Member" } = req.body;
 
     if (!full_name || !department) {
-      return res.status(400).json({
-        message: "full_name and department are required",
-      });
+      return res.status(400).json({ message: "full_name and department are required" });
     }
 
     try {
@@ -36,7 +29,6 @@ router.post(
         .insert({
           full_name,
           department,
-          profile_id,
           role_name,
           church_id,
           active: true,
@@ -46,21 +38,17 @@ router.post(
 
       if (error) throw error;
 
-      return res.status(201).json({
-        message: "Member added successfully",
-        member: data,
-      });
+      return res.status(201).json({ message: "Member added successfully", member: data });
     } catch (err) {
       console.error("Add member error:", err);
-      return res.status(500).json({
-        message: "Failed to add member",
-      });
+      return res.status(500).json({ message: "Failed to add member" });
     }
   }
 );
 
 /**
  * GET MEMBERS
+ * Optional query: department
  */
 router.get("/", authMiddleware, async (req, res) => {
   const supabase = req.supabase;
@@ -69,32 +57,17 @@ router.get("/", authMiddleware, async (req, res) => {
 
   try {
     let query = supabase
-      .from("members")
-      .select(`
-        id,
-        full_name,
-        department,
-        role_name,
-        active,
-        created_at,
-        profiles(
-          email,
-          phone,
-          date_of_birth,
-          gender
-        )
-      `)
+      .from("member_full") // ✅ flattened view with all fields
+      .select("*")
       .eq("church_id", church_id)
       .order("created_at", { ascending: false });
 
-    if (department) {
-      query = query.ilike("department", `%${department}%`);
-    }
+    if (department) query = query.ilike("department", `%${department}%`);
 
     const { data, error } = await query;
     if (error) throw error;
 
-    // 🔁 Normalize / flatten for frontend
+    // Optional: normalize names for frontend
     const members = data.map((m) => ({
       id: m.id,
       full_name: m.full_name,
@@ -102,10 +75,10 @@ router.get("/", authMiddleware, async (req, res) => {
       role_name: m.role_name,
       active: m.active,
       created_at: m.created_at,
-      email: m.profiles?.email ?? null,
-      phone: m.profiles?.phone ?? null,
-      date_of_birth: m.profiles?.date_of_birth ?? null,
-      gender: m.profiles?.gender ?? null,
+      email: m.email ?? null,
+      phone: m.phone ?? null,
+      date_of_birth: m.date_of_birth ?? null,
+      gender: m.gender ?? null,
     }));
 
     return res.json({ members });
@@ -114,6 +87,7 @@ router.get("/", authMiddleware, async (req, res) => {
     return res.status(500).json({ message: "Failed to fetch members" });
   }
 });
+
 /**
  * UPDATE MEMBER (safe fields only)
  */
@@ -125,9 +99,9 @@ router.put(
     const supabase = req.supabase;
     const { id } = req.params;
     const { church_id } = req.user;
-    const { full_name, department } = req.body;
+    const { full_name, department, role_name } = req.body;
 
-    if (!full_name && !department) {
+    if (!full_name && !department && !role_name) {
       return res.status(400).json({ message: "Nothing to update" });
     }
 
@@ -137,6 +111,7 @@ router.put(
         .update({
           ...(full_name && { full_name }),
           ...(department && { department }),
+          ...(role_name && { role_name }),
         })
         .eq("id", id)
         .eq("church_id", church_id);
@@ -152,7 +127,7 @@ router.put(
 );
 
 /**
- * DELETE MEMBER (authority only, identity remains)
+ * DELETE MEMBER
  */
 router.delete(
   "/:id",
