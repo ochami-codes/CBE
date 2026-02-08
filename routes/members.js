@@ -77,7 +77,7 @@ router.get("/", authMiddleware, async (req, res) => {
         role_name,
         active,
         created_at,
-        profiles:profiles!inner (
+        profiles(
           email,
           phone,
           date_of_birth,
