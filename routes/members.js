@@ -67,6 +67,7 @@ router.post(
 );
 
 /**
+/**
  * GET MEMBERS
  * Optional query: department (frontend code, e.g. "youth")
  */
@@ -82,26 +83,36 @@ router.get("/", authMiddleware, async (req, res) => {
       .eq("church_id", church_id)
       .order("created_at", { ascending: false });
 
-    // Filter by department code (from departments table / view)
+    // ---------------- FILTER BY DEPARTMENT ----------------
     if (department) {
-      query = query.eq("department_code", department);
+      // Look up department ID from departments table
+      const { data: dept, error: deptError } = await supabase
+        .from("departments")
+        .select("id")
+        .eq("church_id", church_id)
+        .eq("code", department)
+        .single();
+
+      if (deptError || !dept) {
+        return res.status(400).json({ message: "Invalid department" });
+      }
+
+      query = query.eq("department_id", dept.id);
     }
 
+    // ---------------- EXECUTE QUERY ----------------
     const { data, error } = await query;
     if (error) throw error;
 
+    // ---------------- MAP RESPONSE ----------------
     const members = (data ?? []).map((m) => ({
       id: m.id,
       full_name: m.full_name,
-
-      // normalized for frontend
-      department: m.department_code,
+      department: department ?? m.department_code, // send code string if filtering, else fallback
       department_name: m.department_name,
-
       role_name: m.role_name,
       active: m.active,
       created_at: m.created_at,
-
       email: m.email ?? null,
       phone: m.phone ?? null,
       date_of_birth: m.date_of_birth ?? null,
@@ -111,12 +122,9 @@ router.get("/", authMiddleware, async (req, res) => {
     return res.json({ members });
   } catch (err) {
     console.error("Fetch members error:", err);
-    return res.status(500).json({
-      message: "Failed to fetch members",
-    });
+    return res.status(500).json({ message: "Failed to fetch members" });
   }
 });
-
 /**
  * UPDATE MEMBER
  * Allows updating name, role, or department (via code)
