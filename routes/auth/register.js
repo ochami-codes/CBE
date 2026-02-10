@@ -6,17 +6,13 @@ const router = express.Router();
 
 /* ------------------ Helpers ------------------ */
 
-// Remove forbidden words no matter what client sends
-const sanitizeChurchBaseName = (name) => {
-  return name
+const sanitizeChurchBaseName = (name) =>
+  name
     .replace(/\b(sda|church|seventh day adventist)\b/gi, "")
     .replace(/\s+/g, " ")
     .trim();
-};
 
-const buildFullChurchName = (baseName) => {
-  return `${baseName} SDA Church`;
-};
+const buildFullChurchName = (baseName) => `${baseName} SDA Church`;
 
 const isValidKenyanPhone = (phone) => {
   if (!phone) return false;
@@ -32,6 +28,7 @@ const normalizeKenyanPhone = (phone) => {
 };
 
 /* ------------------ POST /auth/register ------------------ */
+
 router.post("/", async (req, res) => {
   try {
     const {
@@ -42,10 +39,10 @@ router.post("/", async (req, res) => {
       date_of_birth,
       gender,
       conference,
-      church_name, // 👈 base name ONLY
+      church_name,
     } = req.body;
 
-    /* ------------------ 1️⃣ Required fields ------------------ */
+    /* ------------------ 1️⃣ Validate ------------------ */
     if (
       !full_name ||
       !email ||
@@ -61,85 +58,56 @@ router.post("/", async (req, res) => {
       });
     }
 
-    /* ------------------ 2️⃣ Normalize & validate ------------------ */
-    const cleanedBaseName = sanitizeChurchBaseName(church_name);
-
-    if (!cleanedBaseName) {
-      return res.status(400).json({
-        message: "Invalid church name",
-      });
-    }
-
     if (!isValidKenyanPhone(phone)) {
       return res.status(400).json({
         message: "Enter a valid Kenyan phone number",
       });
     }
 
-    const normalizedPhone = normalizeKenyanPhone(phone);
-    const finalChurchName = buildFullChurchName(cleanedBaseName);
+    const baseName = sanitizeChurchBaseName(church_name);
+    if (!baseName) {
+      return res.status(400).json({ message: "Invalid church name" });
+    }
 
-    /* ------------------ 3️⃣ Church lookup / create ------------------ */
+    const normalizedPhone = normalizeKenyanPhone(phone);
+    const finalChurchName = buildFullChurchName(baseName);
+
+    /* ------------------ 2️⃣ Find or create church ------------------ */
     let church;
 
-    const { data: existingChurch, error: churchFetchError } =
+    const { data: existingChurch, error: churchError } =
       await supabaseAdmin
         .from("churches")
         .select("*")
         .eq("name", finalChurchName)
         .maybeSingle();
 
-    if (churchFetchError) throw churchFetchError;
+    if (churchError) throw churchError;
 
     if (existingChurch) {
       church = existingChurch;
     } else {
-      const { data: newChurch, error: churchInsertError } =
+      const { data: newChurch, error: insertChurchError } =
         await supabaseAdmin
           .from("churches")
           .insert({ name: finalChurchName })
           .select()
           .single();
 
-      if (churchInsertError) throw churchInsertError;
+      if (insertChurchError) throw insertChurchError;
       church = newChurch;
 
-      // Seed default departments
-      const departments = [
-        "Children",
-        "Youth / Ambassadors",
-        "Treasury",
-        "Communication",
-        "Sabbath School",
-      ];
-
-      await supabaseAdmin.from("departments").insert(
-        departments.map((name) => ({
-          name,
-          church_id: church.id,
-        }))
-      );
+      // Seed departments (codes should already be normalized elsewhere)
+      await supabaseAdmin.from("departments").insert([
+        { name: "Children", code: "children", church_id: church.id },
+        { name: "Youth", code: "youth", church_id: church.id },
+        { name: "Treasury", code: "treasury", church_id: church.id },
+        { name: "Communication", code: "communication", church_id: church.id },
+        { name: "Sabbath School", code: "sabbath_school", church_id: church.id },
+      ]);
     }
 
-    /* ------------------ 4️⃣ Role assignment ------------------ */
-    const { data: adminRole } = await supabaseAdmin
-      .from("roles")
-      .select("id")
-      .eq("name", "Admin")
-      .single();
-
-    const { data: memberRole } = await supabaseAdmin
-      .from("roles")
-      .select("id")
-      .eq("name", "Member")
-      .single();
-
-    if (!adminRole || !memberRole) {
-      return res.status(500).json({
-        message: "Role configuration error",
-      });
-    }
-
+    /* ------------------ 3️⃣ Determine first user ------------------ */
     const { data: existingProfiles, error: profilesError } =
       await supabaseAdmin
         .from("profiles")
@@ -148,10 +116,9 @@ router.post("/", async (req, res) => {
 
     if (profilesError) throw profilesError;
 
-    const roleId =
-      existingProfiles.length === 0 ? adminRole.id : memberRole.id;
+    const isFirstUser = existingProfiles.length === 0;
 
-    /* ------------------ 5️⃣ Create auth user ------------------ */
+    /* ------------------ 4️⃣ Create auth user ------------------ */
     const { data: authData, error: authError } =
       await supabaseAuth.auth.signUp({
         email,
@@ -172,7 +139,7 @@ router.post("/", async (req, res) => {
 
     const userId = authData.user.id;
 
-    /* ------------------ 6️⃣ Create profile ------------------ */
+    /* ------------------ 5️⃣ Create profile (ALWAYS) ------------------ */
     const { error: profileError } = await supabaseAdmin
       .from("profiles")
       .insert({
@@ -183,33 +150,36 @@ router.post("/", async (req, res) => {
         date_of_birth,
         gender,
         conference,
-        role_id: roleId,
         church_id: church.id,
       });
 
     if (profileError) throw profileError;
 
-    /* ------------------ 7️⃣ Create member ------------------ */
-    const { error: memberError } = await supabaseAdmin
-      .from("members")
-      .insert({
-        id: userId,
-        full_name,
-        role_name: roleId === adminRole.id ? "Admin" : "Member",
-        active: true,
-        church_id: church.id,
-      });
+    /* ------------------ 6️⃣ Create member ONLY for first user ------------------ */
+    if (isFirstUser) {
+      const { error: memberError } = await supabaseAdmin
+        .from("members")
+        .insert({
+          id: userId, // intentional: system user
+          full_name,
+          role_name: "Admin",
+          active: true,
+          church_id: church.id,
+        });
 
-    if (memberError) throw memberError;
+      if (memberError) throw memberError;
+    }
 
-    /* ------------------ 8️⃣ Success ------------------ */
-    res.status(201).json({
+    /* ------------------ 7️⃣ Done ------------------ */
+    return res.status(201).json({
       message:
-        "Registration successful. Please check your email to verify your account.",
+        "Registration successful. Please verify your email before logging in.",
     });
   } catch (err) {
     console.error("Registration error:", err);
-    res.status(500).json({ message: "Registration failed" });
+    return res.status(500).json({
+      message: "Registration failed",
+    });
   }
 });
 
