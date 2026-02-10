@@ -40,7 +40,7 @@ router.post("/", async (req, res) => {
       church_name,
     } = req.body;
 
-    /* ------------------ 1️⃣ Validate required fields ------------------ */
+    // Validate required fields
     if (
       !full_name ||
       !email ||
@@ -66,14 +66,13 @@ router.post("/", async (req, res) => {
     const normalizedPhone = normalizeKenyanPhone(phone);
     const finalChurchName = buildFullChurchName(baseName);
 
-    /* ------------------ 2️⃣ Find or create church ------------------ */
+    // Find or create church
     let church;
     const { data: existingChurch, error: churchError } = await supabaseAdmin
       .from("churches")
       .select("*")
       .eq("name", finalChurchName)
       .maybeSingle();
-
     if (churchError) throw churchError;
 
     if (existingChurch) {
@@ -84,7 +83,6 @@ router.post("/", async (req, res) => {
         .insert({ name: finalChurchName })
         .select()
         .single();
-
       if (insertChurchError) throw insertChurchError;
       church = newChurch;
 
@@ -101,42 +99,38 @@ router.post("/", async (req, res) => {
       );
     }
 
-    /* ------------------ 3️⃣ Determine first user ------------------ */
+    // Determine first user
     const { data: existingProfiles, error: profilesError } = await supabaseAdmin
       .from("profiles")
       .select("id")
       .eq("church_id", church.id);
-
     if (profilesError) throw profilesError;
 
     const isFirstUser = existingProfiles.length === 0;
 
-    /* ------------------ 4️⃣ Fetch roles ------------------ */
-    const { data: adminRoleData, error: adminRoleError } = await supabaseAdmin
+    // Fetch roles
+    const { data: adminRoleData } = await supabaseAdmin
       .from("roles")
       .select("id")
       .eq("name", "Admin")
       .single();
-    if (adminRoleError || !adminRoleData?.id)
-      return res.status(500).json({ message: "Admin role not configured" });
-
-    const { data: memberRoleData, error: memberRoleError } = await supabaseAdmin
+    const { data: memberRoleData } = await supabaseAdmin
       .from("roles")
       .select("id")
       .eq("name", "Member")
       .single();
-    if (memberRoleError || !memberRoleData?.id)
-      return res.status(500).json({ message: "Member role not configured" });
+
+    if (!adminRoleData?.id || !memberRoleData?.id)
+      return res.status(500).json({ message: "Role configuration error" });
 
     const roleId = isFirstUser ? adminRoleData.id : memberRoleData.id;
 
-    /* ------------------ 5️⃣ Create auth user ------------------ */
+    // Create auth user
     const { data: authData, error: authError } = await supabaseAuth.auth.signUp({
       email,
       password,
       options: { emailRedirectTo: `${process.env.FRONTEND_URL}/auth/callback` },
     });
-
     if (authError) {
       if (authError.message?.toLowerCase().includes("already")) {
         return res.status(400).json({
@@ -148,7 +142,7 @@ router.post("/", async (req, res) => {
 
     const userId = authData.user.id;
 
-    /* ------------------ 6️⃣ Create profile (must include role_id) ------------------ */
+    // Create profile
     const { error: profileError } = await supabaseAdmin.from("profiles").insert({
       id: userId,
       full_name,
@@ -158,23 +152,20 @@ router.post("/", async (req, res) => {
       gender,
       conference,
       church_id: church.id,
-      role_id: roleId, // ✅ crucial
+      role_id: roleId, // ✅ always included
     });
     if (profileError) throw profileError;
 
-    /* ------------------ 7️⃣ Create member (first user only) ------------------ */
-    if (isFirstUser) {
-      const { error: memberError } = await supabaseAdmin.from("members").insert({
-        id: userId,
-        full_name,
-        role_name: "Admin",
-        active: true,
-        church_id: church.id,
-      });
-      if (memberError) throw memberError;
-    }
+    // Create member **for all users**
+    const { error: memberError } = await supabaseAdmin.from("members").insert({
+      id: userId, // match profile id
+      full_name,
+      role_name: isFirstUser ? "Admin" : "Member",
+      active: true,
+      church_id: church.id,
+    });
+    if (memberError) throw memberError;
 
-    /* ------------------ 8️⃣ Success ------------------ */
     return res.status(201).json({
       message: "Registration successful. Please verify your email before logging in.",
     });
