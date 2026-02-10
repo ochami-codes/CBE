@@ -9,7 +9,9 @@ router.post("/", async (req, res) => {
   const { email, password } = req.body;
 
   if (!email || !password) {
-    return res.status(400).json({ message: "Email and password are required" });
+    return res.status(400).json({
+      message: "Email and password are required",
+    });
   }
 
   try {
@@ -40,49 +42,57 @@ router.post("/", async (req, res) => {
     }
 
     /* ---------------------------------
-       3️⃣ Fetch member (source of truth)
+       3️⃣ Fetch profile (source of identity)
     ---------------------------------- */
-    const { data: member, error: memberError } =
+    const { data: profile, error: profileError } =
       await supabaseAdmin
-        .from("members")
+        .from("profiles")
         .select(`
           id,
           full_name,
-          role_name,
-          active,
-          church_id,
-          profiles (
-            email
+          email,
+          members (
+            id,
+            role_name,
+            active,
+            church_id
           )
         `)
         .eq("id", user.id)
         .single();
 
-    if (memberError || !member) {
+    if (profileError || !profile) {
       return res.status(401).json({
-        message: "Member record not found",
+        message: "Profile record not found",
       });
     }
 
-    if (!member.active) {
+    /* ---------------------------------
+       4️⃣ Resolve membership (optional)
+    ---------------------------------- */
+    const member = profile.members?.[0] ?? null;
+
+    // If member exists but is inactive
+    if (member && member.active === false) {
       return res.status(403).json({
         message: "Your account has been deactivated",
       });
     }
 
     /* ---------------------------------
-       4️⃣ Success response
+       5️⃣ Success response
     ---------------------------------- */
     return res.json({
       access_token: session.access_token,
       refresh_token: session.refresh_token,
       user: {
-        id: member.id,
-        full_name: member.full_name,
-        email: member.profiles?.email || email,
-        role_name: member.role_name || "Member",
-        church_id: member.church_id,
-        active: member.active,
+        id: profile.id,
+        full_name: profile.full_name,
+        email: profile.email,
+        role_name: member?.role_name || "Guest",
+        church_id: member?.church_id || null,
+        active: member?.active ?? true,
+        is_member: !!member,
       },
     });
   } catch (err) {
