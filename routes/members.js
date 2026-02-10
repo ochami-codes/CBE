@@ -5,7 +5,7 @@ import { requireRole } from "../middleware/requireRole.js";
 const router = express.Router();
 
 /**
- * ADD MEMBER
+ * ADD / UPSERT MEMBER
  * POST /members
  * Expects: { full_name, department (code), email?, role_name? }
  */
@@ -23,116 +23,95 @@ router.post(
     }
 
     try {
-      // ----------------- Resolve department -----------------
-      const { data: dept, error: deptError } = await supabase
+      /* ---------------- Resolve department ---------------- */
+      const { data: dept } = await supabase
         .from("departments")
         .select("id")
         .eq("church_id", church_id)
         .eq("code", department)
         .single();
 
-      if (deptError || !dept) {
+      if (!dept) {
         return res.status(400).json({ message: "Invalid department" });
       }
 
-      let member;
+      let profileId;
 
+      /* ---------------- Resolve or create PROFILE ---------------- */
       if (email) {
-        // ----------------- Check profile by email -----------------
-        const { data: profile, error: profileError } = await supabase
+        const { data: profile } = await supabase
           .from("profiles")
           .select("id")
           .eq("email", email)
           .single();
 
-        if (profileError && profileError.code !== "PGRST116") throw profileError;
-
         if (profile) {
-          // Profile exists, check if member exists
-          const { data: existingMember } = await supabase
-            .from("members")
-            .select("*")
-            .eq("church_id", church_id)
-            .eq("profile_id", profile.id)
-            .single();
+          profileId = profile.id;
 
-          if (existingMember) {
-            // Update existing member
-            const { data: updatedMember, error: updateError } = await supabase
-              .from("members")
-              .update({
-                full_name,
-                department_id: dept.id,
-                role_name,
-                active: true,
-              })
-              .eq("id", existingMember.id)
-              .select()
-              .single();
-
-            if (updateError) throw updateError;
-            member = updatedMember;
-          } else {
-            // Insert new member linked to profile
-            const { data: newMember, error: insertError } = await supabase
-              .from("members")
-              .insert({
-                full_name,
-                department_id: dept.id,
-                role_name,
-                church_id,
-                profile_id: profile.id,
-                active: true,
-              })
-              .select()
-              .single();
-
-            if (insertError) throw insertError;
-            member = newMember;
-          }
+          // keep profile data fresh
+          await supabase
+            .from("profiles")
+            .update({ full_name, church_id })
+            .eq("id", profileId);
         } else {
-          // Profile not found, insert member without profile
-          const { data: newMember, error: insertError } = await supabase
-            .from("members")
+          const { data: newProfile, error } = await supabase
+            .from("profiles")
             .insert({
+              email,
               full_name,
-              department_id: dept.id,
-              role_name,
               church_id,
-              active: true,
+              is_system_user: false,
             })
             .select()
             .single();
 
-          if (insertError) throw insertError;
-          member = newMember;
+          if (error) throw error;
+          profileId = newProfile.id;
         }
       } else {
-        // No email, insert normally
-        const { data: newMember, error: insertError } = await supabase
-          .from("members")
+        // no email → create anonymous profile
+        const { data: newProfile, error } = await supabase
+          .from("profiles")
           .insert({
             full_name,
-            department_id: dept.id,
-            role_name,
             church_id,
-            active: true,
+            is_system_user: false,
           })
           .select()
           .single();
 
-        if (insertError) throw insertError;
-        member = newMember;
+        if (error) throw error;
+        profileId = newProfile.id;
       }
 
-      return res.status(201).json({ message: "Member added successfully", member });
+      /* ---------------- Upsert MEMBER (id = profileId) ---------------- */
+      const { data: member, error } = await supabase
+        .from("members")
+        .upsert(
+          {
+            id: profileId,
+            church_id,
+            department_id: dept.id,
+            role_name,
+            active: true,
+          },
+          { onConflict: "id" }
+        )
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      return res.status(201).json({
+        message: "Member saved successfully",
+        member,
+      });
     } catch (err) {
       console.error("Add member error:", err);
       return res.status(500).json({ message: "Failed to add member" });
     }
   }
 );
-
 /**
  * GET MEMBERS
  * Optional query: department (frontend code, e.g. "youth")
