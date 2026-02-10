@@ -1,3 +1,4 @@
+// backend/routes/profile/index.js
 import express from "express";
 import { authMiddleware } from "../../middleware/authMiddleware.js";
 
@@ -9,73 +10,39 @@ const router = express.Router();
 router.get("/", authMiddleware, async (req, res) => {
   try {
     const supabase = req.supabase;
-    const { id: userId, church_id } = req.user;
+    const userId = req.user.id;
 
-    // 1️⃣ Try to fetch member by profile_id
-    let { data: member, error: memberError } = await supabase
-      .from("members")
-      .select(`
-        id,
-        full_name,
-        role_name,
-        active,
-        profile_id,
-        profiles (
-          phone,
-          email
-        )
-      `)
-      .eq("profile_id", userId)
+    /* ---------------------------------
+       1️⃣ Fetch profile (source of truth)
+    ---------------------------------- */
+    const { data: profile, error: profileError } = await supabase
+      .from("profiles")
+      .select("id, full_name, phone, email")
+      .eq("id", userId)
       .single();
 
-    // 2️⃣ Fallback: fetch by member.id (if profile_id not linked)
-    if (!member) {
-      const { data, error } = await supabase
-        .from("members")
-        .select(`
-          id,
-          full_name,
-          role_name,
-          active,
-          profiles (
-            phone,
-            email
-          )
-        `)
-        .eq("id", userId)
-        .single();
-
-      member = data;
-      memberError = error;
-    }
-
-    // 3️⃣ If still no member, return basic profile from profiles table
-    if (!member) {
-      const { data: profile, error: profileError } = await supabase
-        .from("profiles")
-        .select("id, full_name, phone, email")
-        .eq("id", userId)
-        .single();
-
-      if (profileError || !profile) {
-        return res.status(404).json({ message: "Profile not found" });
-      }
-
-      return res.json({
-        profile: {
-          id: profile.id,
-          full_name: profile.full_name,
-          phone: profile.phone || null,
-          email: profile.email || null,
-          role_name: "Member",
-          active: true,
-          church_id,
-        },
-        contributions: [],
+    if (profileError || !profile) {
+      return res.status(404).json({
+        message: "Profile not found",
       });
     }
 
-    // 4️⃣ Contribution summary (VIEW)
+    /* ---------------------------------
+       2️⃣ Optional membership (VIEW)
+    ---------------------------------- */
+    const { data: member } = await supabase
+      .from("member_full")
+      .select(`
+        role_name,
+        active,
+        church_id
+      `)
+      .eq("profile_id", userId)
+      .maybeSingle();
+
+    /* ---------------------------------
+       3️⃣ Giving summary (VIEW)
+    ---------------------------------- */
     const { data: contributions, error: givingError } = await supabase
       .from("member_giving_summary")
       .select(`
@@ -91,22 +58,27 @@ router.get("/", authMiddleware, async (req, res) => {
       console.error("Giving summary error:", givingError);
     }
 
-    // 5️⃣ Respond
-    res.json({
+    /* ---------------------------------
+       4️⃣ Respond
+    ---------------------------------- */
+    return res.json({
       profile: {
-        id: member.id,
-        full_name: member.full_name,
-        phone: member.profiles?.phone || null,
-        email: member.profiles?.email || null,
-        role_name: member.role_name || "Member",
-        active: member.active ?? true,
-        church_id,
+        id: profile.id,
+        full_name: profile.full_name,
+        phone: profile.phone || null,
+        email: profile.email || null,
+        role_name: member?.role_name || "Guest",
+        active: member?.active ?? true,
+        church_id: member?.church_id || null,
+        is_member: !!member,
       },
       contributions: contributions || [],
     });
   } catch (err) {
     console.error("GET /profile error:", err);
-    res.status(500).json({ message: "Failed to load profile" });
+    return res.status(500).json({
+      message: "Failed to load profile",
+    });
   }
 });
 
@@ -120,7 +92,9 @@ router.put("/", authMiddleware, async (req, res) => {
     const { full_name, phone } = req.body;
 
     if (!full_name && !phone) {
-      return res.status(400).json({ message: "No updates provided" });
+      return res.status(400).json({
+        message: "No updates provided",
+      });
     }
 
     const { error } = await supabase
@@ -133,10 +107,12 @@ router.put("/", authMiddleware, async (req, res) => {
 
     if (error) throw error;
 
-    res.json({ success: true });
+    return res.json({ success: true });
   } catch (err) {
     console.error("PUT /profile error:", err);
-    res.status(500).json({ message: "Failed to update profile" });
+    return res.status(500).json({
+      message: "Failed to update profile",
+    });
   }
 });
 

@@ -1,11 +1,10 @@
 import express from "express";
-import { supabaseAdmin, supabaseAuth } from "../../supabaseClient.js";
+import { supabaseAuth, supabaseAdmin } from "../../supabaseClient.js";
 
 const router = express.Router();
 
 /**
  * GET /auth/me
- * Returns the authenticated user, if token is valid.
  */
 router.get("/", async (req, res) => {
   try {
@@ -17,7 +16,9 @@ router.get("/", async (req, res) => {
 
     const token = authHeader.split(" ")[1];
 
-    // Get the user from Supabase auth
+    /* ---------------------------
+       1️⃣ Validate access token
+    ---------------------------- */
     const {
       data: { user: authUser },
       error: authError,
@@ -27,31 +28,34 @@ router.get("/", async (req, res) => {
       return res.status(200).json({ user: null });
     }
 
-    // Fetch the member from the members table using members.id
+    /* ---------------------------
+       2️⃣ Fetch from member_full
+       (single source of truth)
+    ---------------------------- */
     const { data, error } = await supabaseAdmin
-      .from("members")
+      .from("member_full")
       .select(`
         id,
         full_name,
+        email,
         role_name,
         active,
-        church_id,
-        profiles (
-          email
-        )
+        church_id
       `)
-      .eq("id", authUser.id) // ✅ Use id, not profile_id
-      .single();
+      .eq("id", authUser.id)
+      .maybeSingle();
 
-    if (error || !data) {
-      // Fallback: return basic auth info if members row missing
+    // Profile exists but not a member yet
+    if (!data) {
       return res.status(200).json({
         user: {
           id: authUser.id,
           email: authUser.email,
-          full_name: authUser.user_metadata?.full_name || "Child of God",
-          role_name: "Member",
+          full_name: authUser.user_metadata?.full_name || "Guest",
+          role_name: "Guest",
+          church_id: null,
           active: true,
+          is_member: false,
         },
       });
     }
@@ -63,14 +67,18 @@ router.get("/", async (req, res) => {
       });
     }
 
-    // Success: return combined member info
+    /* ---------------------------
+       3️⃣ Success
+    ---------------------------- */
     return res.status(200).json({
       user: {
         id: data.id,
-        email: data.profiles?.email ?? authUser.email,
         full_name: data.full_name,
+        email: data.email,
+        role_name: data.role_name,
         church_id: data.church_id,
-        role_name: data.role_name || "Member",
+        active: data.active,
+        is_member: true,
       },
     });
   } catch (err) {

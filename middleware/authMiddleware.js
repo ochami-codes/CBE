@@ -1,3 +1,4 @@
+// middleware/authMiddleware.js
 import { supabaseAuth, supabaseAdmin } from "../supabaseClient.js";
 
 export async function authMiddleware(req, res, next) {
@@ -10,53 +11,60 @@ export async function authMiddleware(req, res, next) {
 
     const token = authHeader.split(" ")[1];
 
-    // 1️⃣ Verify Supabase access token
+    /* ---------------------------------
+       1️⃣ Verify Supabase token
+    ---------------------------------- */
     const {
-      data: { user },
+      data: { user: authUser },
       error: authError,
     } = await supabaseAuth.auth.getUser(token);
 
-    if (authError || !user) {
+    if (authError || !authUser) {
       return res.status(401).json({ message: "Invalid or expired token" });
     }
 
-    // 2️⃣ Load member info from your members table (source of truth)
-    //    Use `profile_id` if it stores Supabase Auth UID, otherwise `id`
-    const { data: member, error: memberError } = await supabaseAdmin
-      .from("members")
-      .select(`
-        id,
-        full_name,
-        role_name,
-        active,
-        church_id,
-        profiles (email)
-      `)
-      .eq("id", user.id) // ✅ adjust to profile_id if needed: .eq("profile_id", user.id)
+    /* ---------------------------------
+       2️⃣ Load profile (source of truth)
+    ---------------------------------- */
+    const { data: profile, error: profileError } = await supabaseAdmin
+      .from("profiles")
+      .select("id, full_name, email")
+      .eq("id", authUser.id)
       .single();
 
-    if (memberError || !member) {
-      return res.status(401).json({ message: "Member record not found" });
+    if (profileError || !profile) {
+      return res.status(401).json({ message: "Profile not found" });
     }
 
-    // 🚫 Block deactivated members
-    if (member.active === false) {
+    /* ---------------------------------
+       3️⃣ Optional membership (VIEW)
+    ---------------------------------- */
+    const { data: member } = await supabaseAdmin
+      .from("member_full")
+      .select("role_name, active, church_id")
+      .eq("profile_id", profile.id)
+      .maybeSingle();
+
+    if (member?.active === false) {
       return res.status(403).json({ message: "Account deactivated" });
     }
 
-    // 3️⃣ Attach normalized user object, plus Supabase UID
+    /* ---------------------------------
+       4️⃣ Attach normalized user
+    ---------------------------------- */
     req.user = {
-      id: member.id,             // members table ID
-      authUserId: user.id,       // ✅ Supabase Auth UID for admin actions
-      email: member.profiles?.email ?? null,
-      full_name: member.full_name,
-      church_id: member.church_id,
-      role_name: member.role_name || "Member",
+      id: profile.id,                 // ✅ profile_id
+      authUserId: authUser.id,        // Supabase UID
+      email: profile.email,
+      full_name: profile.full_name,
+      role_name: member?.role_name || "Guest",
+      church_id: member?.church_id || null,
+      is_member: !!member,
     };
 
     next();
   } catch (err) {
     console.error("Auth middleware error:", err);
-    res.status(500).json({ message: "Server error" });
+    return res.status(500).json({ message: "Server error" });
   }
 }
