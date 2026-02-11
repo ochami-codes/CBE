@@ -4,7 +4,7 @@ import adminMembers from "./members.js";
 import overview from "./overview.js";
 import users from "./users.js";
 import requestRole from "./role-requests/index.js";// folder router
-
+import adminDashboard from "./admindashboard.js";
 const router = express.Router();
 
 router.use("/role-requests", roleRequests);
@@ -12,4 +12,5 @@ router.use("/overview", overview);
 router.use("/members", adminMembers);
 router.use("/users", users);
 router.use("/request-role", requestRole);
+router.use("/dashboard",adminDashboard); 
 export default router;

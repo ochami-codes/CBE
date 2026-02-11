@@ -1,6 +1,5 @@
 // routes/treasury.js
 import express from "express";
-import { authMiddleware } from "../../middleware/authMiddleware.js";
 import { requireRole } from "../../middleware/requireRole.js";
 
 const router = express.Router();
@@ -11,7 +10,7 @@ const router = express.Router();
 ===================================================== */
 router.get(
   "/overview",
-  authMiddleware,
+  
   requireRole(["Admin", "Treasurer"]),
   async (req, res) => {
     try {
@@ -39,7 +38,7 @@ router.get(
 ===================================================== */
 router.get(
   "/fund-groups",
-  authMiddleware,
+  
   requireRole(["Admin", "Treasurer"]),
   async (req, res) => {
     try {
@@ -67,7 +66,7 @@ router.get(
 ===================================================== */
 router.get(
   "/fund-groups/:groupId/funds",
-  authMiddleware,
+  
   requireRole(["Admin", "Treasurer"]),
   async (req, res) => {
     try {
@@ -97,7 +96,7 @@ router.get(
 ===================================================== */
 router.get(
   "/member-giving-summary",
-  authMiddleware,
+  
   requireRole(["Admin", "Treasurer"]),
   async (req, res) => {
     try {

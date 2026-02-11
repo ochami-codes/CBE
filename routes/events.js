@@ -1,6 +1,5 @@
 // backend/routes/events.js
 import express from "express";
-import { authMiddleware } from "../middleware/authMiddleware.js";
 import { requireRole } from "../middleware/requireRole.js";
 
 const router = express.Router();
@@ -9,7 +8,7 @@ const router = express.Router();
  * GET /events
  * List events for the authenticated user's church
  */
-router.get("/", authMiddleware, async (req, res) => {
+router.get("/", async (req, res) => {
   const supabase = req.supabase;
   const { church_id } = req.user;
 
@@ -37,7 +36,7 @@ router.get("/", authMiddleware, async (req, res) => {
  */
 router.post(
   "/",
-  authMiddleware,
+  
   requireRole(["admin", "pastor", "elder"]),
   async (req, res) => {
     const supabase = req.supabase;

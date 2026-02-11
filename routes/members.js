@@ -1,5 +1,4 @@
 import express from "express";
-import { authMiddleware } from "../middleware/authMiddleware.js";
 import { requireRole } from "../middleware/requireRole.js";
 
 const router = express.Router();
@@ -11,7 +10,7 @@ const router = express.Router();
  */
 router.post(
   "/",
-  authMiddleware,
+  
   requireRole(["Admin", "Pastor", "Youth_leader"]),
   async (req, res) => {
     const supabase = req.supabase;
@@ -116,7 +115,7 @@ router.post(
  * GET MEMBERS
  * Optional query: department (frontend code, e.g. "youth")
  */
-router.get("/", authMiddleware, async (req, res) => {
+router.get("/", async (req, res) => {
   const supabase = req.supabase;
   const { church_id } = req.user;
   const { department } = req.query;
@@ -172,7 +171,7 @@ router.get("/", authMiddleware, async (req, res) => {
  */
 router.put(
   "/:id",
-  authMiddleware,
+  
   requireRole(["Admin", "Pastor", "Youth_leader"]),
   async (req, res) => {
     const supabase = req.supabase;
@@ -236,7 +235,7 @@ router.put(
  */
 router.delete(
   "/:id",
-  authMiddleware,
+  
   requireRole(["Admin", "Pastor", "Youth_leader"]),
   async (req, res) => {
     const supabase = req.supabase;

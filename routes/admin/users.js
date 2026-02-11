@@ -1,7 +1,6 @@
 // routes/admin/users.js
 import express from "express";
 import requireAdmin from "../../middleware/requireAdmin.js";
-import { authMiddleware } from "../../middleware/authMiddleware.js";
 
 const router = express.Router();
 
@@ -10,7 +9,7 @@ const router = express.Router();
  */
 router.post(
   "/:id/deactivate",
-  authMiddleware,
+  
   requireAdmin,
   async (req, res) => {
     const supabase = req.supabase;
@@ -70,7 +69,7 @@ router.post(
 //activate users
 router.post(
   "/:id/activate",
-  authMiddleware,
+  
   requireAdmin,
   async (req, res) => {
     const supabase = req.supabase;

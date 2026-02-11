@@ -1,6 +1,5 @@
 // routes/treasury/transactions.js
 import express from "express";
-import { authMiddleware } from "../../middleware/authMiddleware.js";
 import { requireRole } from "../../middleware/requireRole.js";
 
 const router = express.Router();
@@ -11,7 +10,7 @@ const router = express.Router();
 ===================================================== */
 router.post(
   "/",
-  authMiddleware,
+  
   requireRole(["Admin", "Treasurer"]),
   async (req, res) => {
     try {

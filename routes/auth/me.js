@@ -1,3 +1,4 @@
+// backend/routes/auth/me.js
 import express from "express";
 import { supabaseAuth, supabaseAdmin } from "../../supabaseClient.js";
 
@@ -5,6 +6,10 @@ const router = express.Router();
 
 /**
  * GET /auth/me
+ * Resolves the current authenticated user:
+ * - Guest (signed in, not a member)
+ * - Pending member
+ * - Approved member
  */
 router.get("/", async (req, res) => {
   try {
@@ -16,9 +21,9 @@ router.get("/", async (req, res) => {
 
     const token = authHeader.split(" ")[1];
 
-    /* ---------------------------
-       1️⃣ Validate access token
-    ---------------------------- */
+    /* ------------------------------------------------
+       1️⃣ Validate Supabase access token
+    ------------------------------------------------ */
     const {
       data: { user: authUser },
       error: authError,
@@ -28,11 +33,10 @@ router.get("/", async (req, res) => {
       return res.status(200).json({ user: null });
     }
 
-    /* ---------------------------
-       2️⃣ Fetch from member_full
-       (single source of truth)
-    ---------------------------- */
-    const { data, error } = await supabaseAdmin
+    /* ------------------------------------------------
+       2️⃣ Fetch resolved member identity (VIEW)
+    ------------------------------------------------ */
+    const { data: member } = await supabaseAdmin
       .from("member_full")
       .select(`
         id,
@@ -45,40 +49,61 @@ router.get("/", async (req, res) => {
       .eq("id", authUser.id)
       .maybeSingle();
 
-    // Profile exists but not a member yet
-    if (!data) {
+    /* ------------------------------------------------
+       3️⃣ Membership request state (if any)
+    ------------------------------------------------ */
+    const { data: membershipRequest } = await supabaseAdmin
+      .from("membership_requests")
+      .select("status")
+      .eq("profile_id", authUser.id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    /* ------------------------------------------------
+       4️⃣ Guest (not yet a member)
+    ------------------------------------------------ */
+    if (!member) {
       return res.status(200).json({
         user: {
           id: authUser.id,
           email: authUser.email,
-          full_name: authUser.user_metadata?.full_name || "Guest",
+          full_name:
+            authUser.user_metadata?.full_name ||
+            authUser.email?.split("@")[0] ||
+            "Guest",
           role_name: "Guest",
           church_id: null,
           active: true,
           is_member: false,
+          membership_status: membershipRequest?.status ?? "none",
         },
       });
     }
 
-    if (data.active === false) {
+    /* ------------------------------------------------
+       5️⃣ Block deactivated members
+    ------------------------------------------------ */
+    if (member.active === false) {
       return res.status(403).json({
         user: null,
         message: "Account deactivated",
       });
     }
 
-    /* ---------------------------
-       3️⃣ Success
-    ---------------------------- */
+    /* ------------------------------------------------
+       6️⃣ Approved member
+    ------------------------------------------------ */
     return res.status(200).json({
       user: {
-        id: data.id,
-        full_name: data.full_name,
-        email: data.email,
-        role_name: data.role_name,
-        church_id: data.church_id,
-        active: data.active,
+        id: member.id,
+        full_name: member.full_name,
+        email: member.email,
+        role_name: member.role_name,
+        church_id: member.church_id,
+        active: true,
         is_member: true,
+        membership_status: "approved",
       },
     });
   } catch (err) {

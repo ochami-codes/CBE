@@ -11,9 +11,9 @@ export async function authMiddleware(req, res, next) {
 
     const token = authHeader.split(" ")[1];
 
-    /* ---------------------------------
-       1️⃣ Verify Supabase token
-    ---------------------------------- */
+    /* ------------------------------------------------
+       1️⃣ Verify Supabase access token
+    ------------------------------------------------ */
     const {
       data: { user: authUser },
       error: authError,
@@ -23,40 +23,39 @@ export async function authMiddleware(req, res, next) {
       return res.status(401).json({ message: "Invalid or expired token" });
     }
 
-    /* ---------------------------------
-       2️⃣ Load profile (source of truth)
-    ---------------------------------- */
-    const { data: profile, error: profileError } = await supabaseAdmin
-      .from("profiles")
-      .select("id, full_name, email")
-      .eq("id", authUser.id)
-      .single();
-
-    if (profileError || !profile) {
-      return res.status(401).json({ message: "Profile not found" });
-    }
-
-    /* ---------------------------------
-       3️⃣ Optional membership (VIEW)
-    ---------------------------------- */
+    /* ------------------------------------------------
+       2️⃣ Resolve identity from member_full (optional)
+    ------------------------------------------------ */
     const { data: member } = await supabaseAdmin
       .from("member_full")
-      .select("role_name, active, church_id")
-      .eq("profile_id", profile.id)
+      .select(`
+        id,
+        full_name,
+        email,
+        role_name,
+        active,
+        church_id
+      `)
+      .eq("id", authUser.id)
       .maybeSingle();
 
-    if (member?.active === false) {
+    /* ------------------------------------------------
+       3️⃣ Block deactivated members
+    ------------------------------------------------ */
+    if (member && member.active === false) {
       return res.status(403).json({ message: "Account deactivated" });
     }
 
-    /* ---------------------------------
-       4️⃣ Attach normalized user
-    ---------------------------------- */
+    /* ------------------------------------------------
+       4️⃣ Attach normalized user context
+    ------------------------------------------------ */
     req.user = {
-      id: profile.id,                 // ✅ profile_id
-      authUserId: authUser.id,        // Supabase UID
-      email: profile.email,
-      full_name: profile.full_name,
+      id: authUser.id, // Supabase UID = profile_id
+      email: member?.email ?? authUser.email,
+      full_name:
+        member?.full_name ||
+        authUser.user_metadata?.full_name ||
+        "Guest",
       role_name: member?.role_name || "Guest",
       church_id: member?.church_id || null,
       is_member: !!member,

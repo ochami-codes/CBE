@@ -1,6 +1,5 @@
 // backend/routes/dashboard/upcomingBirthdays.js
 import express from "express";
-import { authMiddleware } from "../../middleware/authMiddleware.js";
 
 const router = express.Router();
 
@@ -8,7 +7,7 @@ const router = express.Router();
  * GET /dashboard/upcoming-birthdays?days=7
  * Returns members in the same church whose birthday is in the next N days
  */
-router.get("/", authMiddleware, async (req, res) => {
+router.get("/", async (req, res) => {
   const supabase = req.supabase;
   const user = req.user;
   const daysAhead = parseInt(req.query.days) || 7;

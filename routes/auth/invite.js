@@ -1,7 +1,6 @@
 // backend/routes/auth/invite.js
 import express from "express";
 
-import { authMiddleware } from "../../middleware/authMiddleware.js";
 import { requireVerified } from "../../middleware/verified.js";
 import requireAdmin from "../../middleware/requireAdmin.js";
 
@@ -25,7 +24,7 @@ async function getRoleId(supabase, roleName) {
 // POST /auth/invite — ADMIN ONLY
 router.post(
   "/",
-  authMiddleware,
+  
   requireVerified,
   requireAdmin,
   async (req, res) => {

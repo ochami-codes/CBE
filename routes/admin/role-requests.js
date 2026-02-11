@@ -1,5 +1,4 @@
 import express from "express";
-import { authMiddleware } from "../../middleware/authMiddleware.js";
 import requireAdmin from "../../middleware/requireAdmin.js";
 
 const router = express.Router();
@@ -8,7 +7,7 @@ const router = express.Router();
  * GET /admin/role-requests
  * List pending role requests for this church
  */
-router.get("/", authMiddleware, requireAdmin, async (req, res) => {
+router.get("/", requireAdmin, async (req, res) => {
   const supabase = req.supabase;
   const churchId = req.user.church_id;
 
@@ -49,7 +48,7 @@ router.get("/", authMiddleware, requireAdmin, async (req, res) => {
  */
 router.post(
   "/:id/approve",
-  authMiddleware,
+  
   requireAdmin,
   async (req, res) => {
     const supabase = req.supabase;
@@ -97,7 +96,7 @@ router.post(
  */
 router.post(
   "/:id/reject",
-  authMiddleware,
+  
   requireAdmin,
   async (req, res) => {
     const supabase = req.supabase;

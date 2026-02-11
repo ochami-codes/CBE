@@ -1,5 +1,4 @@
 import express from "express";
-import { authMiddleware } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
@@ -72,7 +71,7 @@ router.get("/", async (req, res) => {
    Body: { title, message, churchId }
    Requires auth
 -------------------------------------------------- */
-router.post("/", authMiddleware, async (req, res) => {
+router.post("/", async (req, res) => {
   const supabase = req.supabase;
   const { title, message, churchId } = req.body;
   const userId = req.user?.id;
@@ -111,7 +110,7 @@ router.post("/", authMiddleware, async (req, res) => {
    DELETE /announcements/:id
    Requires auth
 -------------------------------------------------- */
-router.delete("/:id", authMiddleware, async (req, res) => {
+router.delete("/:id", async (req, res) => {
   const supabase = req.supabase;
   const { id } = req.params;
 

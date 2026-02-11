@@ -1,6 +1,5 @@
 // backend/routes/admin/role-requests/pending-count.js
 import express from "express";
-import { authMiddleware } from "../../../middleware/authMiddleware.js";
 import requireAdmin from "../../../middleware/requireAdmin.js";
 
 const router = express.Router();
@@ -9,7 +8,7 @@ const router = express.Router();
  * GET /admin/role-requests/pending-count
  * Returns the number of pending role requests for the admin's church
  */
-router.get("/", authMiddleware, requireAdmin, async (req, res) => {
+router.get("/", requireAdmin, async (req, res) => {
   const supabase = req.supabase;
   const churchId = req.user.church_id;
 

@@ -1,6 +1,5 @@
 // backend/routes/departments.js
 import express from "express";
-import { authMiddleware } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
@@ -8,7 +7,7 @@ const router = express.Router();
  * GET /departments
  * Fetch all departments for the church
  */
-router.get("/", authMiddleware, async (req, res) => {
+router.get("/", async (req, res) => {
   const supabase = req.supabase;
   const { church_id } = req.user;
 

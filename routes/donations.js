@@ -1,6 +1,5 @@
 // backend/routes/donations.js
 import express from "express";
-import { authMiddleware } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
@@ -8,7 +7,7 @@ const router = express.Router();
  * POST /donations
  * Make a donation (authenticated users)
  */
-router.post("/", authMiddleware, async (req, res) => {
+router.post("/", async (req, res) => {
   const supabase = req.supabase;
   const { id: user_id, church_id } = req.user;
   const { amount, message } = req.body;
@@ -49,7 +48,7 @@ router.post("/", authMiddleware, async (req, res) => {
  * GET /donations
  * List donations for current church
  */
-router.get("/", authMiddleware, async (req, res) => {
+router.get("/", async (req, res) => {
   const supabase = req.supabase;
   const { church_id } = req.user;
 

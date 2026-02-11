@@ -1,6 +1,5 @@
 // backend/routes/dashboard/todaysBirthdays.js
 import express from "express";
-import { authMiddleware } from "../../middleware/authMiddleware.js";
 
 const router = express.Router();
 
@@ -8,7 +7,7 @@ const router = express.Router();
  * GET /dashboard/todays-birthdays
  * Returns members in the same church whose birthday is today
  */
-router.get("/", authMiddleware, async (req, res) => {
+router.get("/", async (req, res) => {
   const supabase = req.supabase;
   const user = req.user;
 

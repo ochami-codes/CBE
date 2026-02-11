@@ -1,11 +1,10 @@
 import express from "express";
-import { authMiddleware } from "../../middleware/authMiddleware.js";
 import { supabaseAdmin } from "../../supabaseClient.js";
 
 const router = express.Router();
 
 // POST /auth/change-password
-router.post("/", authMiddleware, async (req, res) => {
+router.post("/", async (req, res) => {
   try {
     // 1️⃣ Extract newPassword safely
     let newPassword = req.body?.newPassword;

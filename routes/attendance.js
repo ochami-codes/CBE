@@ -1,6 +1,5 @@
 // backend/routes/attendance.js
 import express from "express";
-import { authMiddleware } from "../middleware/authMiddleware.js";
 import { requireRole } from "../middleware/requireRole.js";
 
 const router = express.Router();
@@ -12,7 +11,7 @@ const router = express.Router();
  */
 router.get(
   "/",
-  authMiddleware,
+  
   requireRole(["admin", "pastor", "youth_leader","children_leader"]),
   async (req, res) => {
     const supabase = req.supabase;
@@ -45,7 +44,7 @@ router.get(
  */
 router.post(
   "/",
-  authMiddleware,
+  
   requireRole(["admin", "pastor", "children_leader", "youth_leader"]),
   async (req, res) => {
     const supabase = req.supabase;
@@ -85,7 +84,7 @@ router.post(
  * Query params: department, month (YYYY-MM)
  * Returns total present % for each member in a month
  */
-router.get("/monthly-summary", authMiddleware, requireRole(["Admin", "Pastor", "Youth_leader"]), async (req, res) => {
+router.get("/monthly-summary", requireRole(["Admin", "Pastor", "Youth_leader"]), async (req, res) => {
   const supabase = req.supabase;
   const { department, month } = req.query;
 
@@ -127,7 +126,7 @@ router.get("/monthly-summary", authMiddleware, requireRole(["Admin", "Pastor", "
  * Query params: department, year (YYYY)
  * Returns attendance % per month for a given year
  */
-router.get("/yearly-summary", authMiddleware, requireRole(["Admin", "Pastor", "Youth_leader"]), async (req, res) => {
+router.get("/yearly-summary", requireRole(["Admin", "Pastor", "Youth_leader"]), async (req, res) => {
   const supabase = req.supabase;
   const { department, year } = req.query;
 

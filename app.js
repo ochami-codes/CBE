@@ -5,6 +5,8 @@ import cors from "cors";
 
 import authRoutes from "./routes/auth/index.js";
 import adminRoutes from "./routes/admin/index.js";
+import membershipRoutes from "./routes/membership/member.js";
+import adminMembershipRoutes from "./routes/membership/admin.js";
 import donationRoutes from "./routes/donations.js";
 import eventRoutes from "./routes/events.js";
 import pastorRoutes from "./routes/pastor/index.js";
@@ -33,7 +35,7 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-/* ------------------ Attach ADMIN Supabase ------------------ */
+/* ------------------ Attach Supabase ------------------ */
 app.use((req, res, next) => {
   req.supabase = supabaseAdmin;
   next();
@@ -43,15 +45,16 @@ app.use((req, res, next) => {
 app.use("/auth", authRoutes);
 app.use("/churches", churchRoutes);
 
-/* ------------------ Dashboard routes ------------------ */
+/* ------------------ Dashboard routes (auth optional inside route) ------------------ */
 app.use("/dashboard/daily-verse", verseRoutes);
 app.use("/dashboard/announcements", announcementRoutes);
 app.use("/dashboard/upcoming-birthdays", upcomingBirthdays);
-app.use("/dashboard/my-birthday", myBirthdayRoutes);
+app.use("/dashboard/my-birthday", authMiddleware, myBirthdayRoutes);
 app.use("/dashboard/todays-birthdays", todaysBirthdayRoutes);
 
 /* ------------------ Authenticated routes ------------------ */
 app.use("/profile", authMiddleware, profileRoutes);
+app.use("/membership-requests", authMiddleware, membershipRoutes);
 app.use("/donations", authMiddleware, donationRoutes);
 app.use("/events", authMiddleware, eventRoutes);
 app.use("/pastor", authMiddleware, pastorRoutes);
@@ -62,12 +65,13 @@ app.use("/children", authMiddleware, childrenRoutes);
 app.use("/treasury", authMiddleware, treasuryRoutes);
 app.use("/treasury/transactions", authMiddleware, treasuryTransactionRoutes);
 app.use("/role-requests", authMiddleware, myRequest);
+
 /* ------------------ Admin routes ------------------ */
 app.use("/admin", authMiddleware, requireAdmin, adminRoutes);
+app.use("/admin/membership-requests", authMiddleware, requireAdmin, adminMembershipRoutes);
 
 /* ------------------ Health check ------------------ */
 app.get("/", (req, res) => {
   res.json({ status: "API running" });
 });
-
 export default app;

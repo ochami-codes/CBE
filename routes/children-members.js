@@ -1,6 +1,5 @@
 // backend/routes/children-members.js
 import express from "express";
-import { authMiddleware } from "../middleware/authMiddleware.js";
 import { requireRole } from "../middleware/requireRole.js";
 
 const router = express.Router();
@@ -10,7 +9,7 @@ const router = express.Router();
  * List all children for a church
  * Query param: churchId
  */
-router.get("/", authMiddleware, async (req, res) => {
+router.get("/", async (req, res) => {
   const supabase = req.supabase;
   const { churchId } = req.query;
 
@@ -38,7 +37,7 @@ router.get("/", authMiddleware, async (req, res) => {
  * GET /children/:id
  * Get single child by ID
  */
-router.get("/:id", authMiddleware, async (req, res) => {
+router.get("/:id", async (req, res) => {
   const supabase = req.supabase;
   const { id } = req.params;
 
@@ -66,7 +65,7 @@ router.get("/:id", authMiddleware, async (req, res) => {
  */
 router.post(
   "/",
-  authMiddleware,
+  
   requireRole(["admin", "children_leader"]),
   async (req, res) => {
     const supabase = req.supabase;
@@ -106,7 +105,7 @@ router.post(
  */
 router.put(
   "/:id",
-  authMiddleware,
+  
   requireRole(["admin", "children_leader"]),
   async (req, res) => {
     const supabase = req.supabase;
@@ -139,7 +138,7 @@ router.put(
  */
 router.delete(
   "/:id",
-  authMiddleware,
+  
   requireRole(["admin", "children_leader"]),
   async (req, res) => {
     const supabase = req.supabase;

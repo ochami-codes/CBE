@@ -1,13 +1,12 @@
 // backend/routes/profile/index.js
 import express from "express";
-import { authMiddleware } from "../../middleware/authMiddleware.js";
 
 const router = express.Router();
 
 /* --------------------------------------------------
    GET /profile
 -------------------------------------------------- */
-router.get("/", authMiddleware, async (req, res) => {
+router.get("/", async (req, res) => {
   try {
     const supabase = req.supabase;
     const userId = req.user.id;
@@ -85,7 +84,7 @@ router.get("/", authMiddleware, async (req, res) => {
 /* --------------------------------------------------
    PUT /profile
 -------------------------------------------------- */
-router.put("/", authMiddleware, async (req, res) => {
+router.put("/", async (req, res) => {
   try {
     const supabase = req.supabase;
     const userId = req.user.id;

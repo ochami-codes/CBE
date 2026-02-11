@@ -4,6 +4,11 @@ export function requireRole(allowedRoles = []) {
       return res.status(401).json({ message: "Unauthorized" });
     }
 
+    // 🔒 Must be a member
+    if (!req.user.is_member) {
+      return res.status(403).json({ message: "Members only" });
+    }
+
     const userRole = req.user.role_name;
 
     if (!userRole) {
