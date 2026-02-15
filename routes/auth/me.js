@@ -6,10 +6,11 @@ const router = express.Router();
 
 /**
  * GET /auth/me
- * Resolves the current authenticated user:
- * - Guest (signed in, not a member)
- * - Pending member
- * - Approved member
+ *
+ * Resolves the authenticated user into one of:
+ * - Guest (signed in, no member record yet)
+ * - Pending member (membership request exists)
+ * - Approved member (exists in member_full)
  */
 router.get("/", async (req, res) => {
   try {
@@ -21,9 +22,9 @@ router.get("/", async (req, res) => {
 
     const token = authHeader.split(" ")[1];
 
-    /* ------------------------------------------------
+    /* ---------------------------------
        1️⃣ Validate Supabase access token
-    ------------------------------------------------ */
+    ---------------------------------- */
     const {
       data: { user: authUser },
       error: authError,
@@ -33,10 +34,11 @@ router.get("/", async (req, res) => {
       return res.status(200).json({ user: null });
     }
 
-    /* ------------------------------------------------
-       2️⃣ Fetch resolved member identity (VIEW)
-    ------------------------------------------------ */
-    const { data: member } = await supabaseAdmin
+    /* ---------------------------------
+       2️⃣ Fetch approved member (VIEW)
+       member_full = profiles + members + churches
+    ---------------------------------- */
+    const { data: member, error: memberError } = await supabaseAdmin
       .from("member_full")
       .select(`
         id,
@@ -44,14 +46,20 @@ router.get("/", async (req, res) => {
         email,
         role_name,
         active,
-        church_id
+        church_id,
+        church_name
       `)
       .eq("id", authUser.id)
       .maybeSingle();
 
-    /* ------------------------------------------------
-       3️⃣ Membership request state (if any)
-    ------------------------------------------------ */
+    if (memberError) {
+      console.error("member_full fetch error:", memberError);
+      return res.status(500).json({ user: null });
+    }
+
+    /* ---------------------------------
+       3️⃣ Fetch latest membership request (if any)
+    ---------------------------------- */
     const { data: membershipRequest } = await supabaseAdmin
       .from("membership_requests")
       .select("status")
@@ -60,9 +68,9 @@ router.get("/", async (req, res) => {
       .limit(1)
       .maybeSingle();
 
-    /* ------------------------------------------------
-       4️⃣ Guest (not yet a member)
-    ------------------------------------------------ */
+    /* ---------------------------------
+       4️⃣ Guest or Pending user
+    ---------------------------------- */
     if (!member) {
       return res.status(200).json({
         user: {
@@ -74,6 +82,7 @@ router.get("/", async (req, res) => {
             "Guest",
           role_name: "Guest",
           church_id: null,
+          church_name: null,
           active: true,
           is_member: false,
           membership_status: membershipRequest?.status ?? "none",
@@ -81,9 +90,9 @@ router.get("/", async (req, res) => {
       });
     }
 
-    /* ------------------------------------------------
+    /* ---------------------------------
        5️⃣ Block deactivated members
-    ------------------------------------------------ */
+    ---------------------------------- */
     if (member.active === false) {
       return res.status(403).json({
         user: null,
@@ -91,9 +100,9 @@ router.get("/", async (req, res) => {
       });
     }
 
-    /* ------------------------------------------------
+    /* ---------------------------------
        6️⃣ Approved member
-    ------------------------------------------------ */
+    ---------------------------------- */
     return res.status(200).json({
       user: {
         id: member.id,
@@ -101,6 +110,7 @@ router.get("/", async (req, res) => {
         email: member.email,
         role_name: member.role_name,
         church_id: member.church_id,
+        church_name: member.church_name,
         active: true,
         is_member: true,
         membership_status: "approved",
