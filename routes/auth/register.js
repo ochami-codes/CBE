@@ -71,7 +71,6 @@ router.post("/", async (req, res) => {
 
     /* ------------------ Find or create church ------------------ */
     let church;
-
     const { data: existingChurch, error: churchError } = await supabaseAdmin
       .from("churches")
       .select("*")
@@ -83,11 +82,12 @@ router.post("/", async (req, res) => {
     if (existingChurch) {
       church = existingChurch;
     } else {
-      const { data: newChurch, error: insertChurchError } = await supabaseAdmin
-        .from("churches")
-        .insert({ name: finalChurchName })
-        .select()
-        .single();
+      const { data: newChurch, error: insertChurchError } =
+        await supabaseAdmin
+          .from("churches")
+          .insert({ name: finalChurchName })
+          .select()
+          .single();
 
       if (insertChurchError) throw insertChurchError;
       church = newChurch;
@@ -107,10 +107,11 @@ router.post("/", async (req, res) => {
     }
 
     /* ------------------ Determine first user ------------------ */
-    const { data: existingProfiles, error: profilesError } = await supabaseAdmin
-      .from("profiles")
-      .select("id")
-      .eq("church_id", church.id);
+    const { data: existingProfiles, error: profilesError } =
+      await supabaseAdmin
+        .from("profiles")
+        .select("id")
+        .eq("church_id", church.id);
 
     if (profilesError) throw profilesError;
 
@@ -123,17 +124,17 @@ router.post("/", async (req, res) => {
       .eq("name", "Admin")
       .single();
 
-    const { data: memberRole } = await supabaseAdmin
+    const { data: guestRole } = await supabaseAdmin
       .from("roles")
       .select("id")
-      .eq("name", "Member")
+      .eq("name", "Guest")
       .single();
 
-    if (!adminRole?.id || !memberRole?.id) {
+    if (!adminRole?.id || !guestRole?.id) {
       return res.status(500).json({ message: "Role configuration error" });
     }
 
-    const roleId = isFirstUser ? adminRole.id : memberRole.id;
+    const roleId = isFirstUser ? adminRole.id : guestRole.id;
 
     /* ------------------ Create auth user ------------------ */
     const { data: authData, error: authError } =
@@ -156,7 +157,7 @@ router.post("/", async (req, res) => {
 
     const userId = authData.user.id;
 
-    /* ------------------ Create profile (ALL users) ------------------ */
+    /* ------------------ Create profile ------------------ */
     const { error: profileError } = await supabaseAdmin.from("profiles").insert({
       id: userId,
       full_name,
@@ -171,7 +172,7 @@ router.post("/", async (req, res) => {
 
     if (profileError) throw profileError;
 
-    /* ------------------ Create member (ONLY first user) ------------------ */
+    /* ------------------ Create member entry for first user ------------------ */
     if (isFirstUser) {
       const { error: memberError } = await supabaseAdmin.from("members").insert({
         id: userId,
@@ -186,14 +187,13 @@ router.post("/", async (req, res) => {
 
     /* ------------------ Success ------------------ */
     return res.status(201).json({
-      message:
-        "Registration successful. Please verify your email and await membership approval.",
+      message: isFirstUser
+        ? "Registration successful. You are the church Admin."
+        : "Registration successful. Your account is pending approval.",
     });
   } catch (err) {
     console.error("Registration error:", err);
-    return res.status(500).json({
-      message: "Registration failed",
-    });
+    return res.status(500).json({ message: "Registration failed" });
   }
 });
 
