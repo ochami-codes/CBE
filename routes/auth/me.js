@@ -43,7 +43,7 @@ router.get("/", async (req, res) => {
     ] = await Promise.all([
       supabaseAdmin
         .from("profiles")
-        .select("id, full_name, email, role_name, church_id, church:church_id(name)")
+        .select("id, full_name, email, church_id, church:church_id(name)")
         .eq("id", authUser.id)
         .maybeSingle(),
 
@@ -84,7 +84,6 @@ router.get("/", async (req, res) => {
 
     const roleName =
       member?.role_name ||
-      profile?.role_name ||
       "Guest";
 
     const churchId = profile?.church_id || null;
