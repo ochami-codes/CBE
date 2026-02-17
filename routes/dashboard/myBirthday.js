@@ -1,3 +1,14 @@
+// backend/routes/dashboard/myBirthday.js
+import express from "express";
+
+const router = express.Router();
+
+/**
+
+GET /dashboard/my-birthday
+
+Returns logged-in user's birthday info
+*/
 router.get("/", async (req, res) => {
   const supabase = req.supabase;
   const userId = req.user?.id;
@@ -40,3 +51,4 @@ router.get("/", async (req, res) => {
     res.status(500).json({ message: "Failed to load birthday information" });
   }
 });
+export default router;
