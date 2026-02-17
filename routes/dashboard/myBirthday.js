@@ -4,11 +4,9 @@ import express from "express";
 const router = express.Router();
 
 /**
-
-GET /dashboard/my-birthday
-
-Returns logged-in user's birthday info
-*/
+ * GET /dashboard/my-birthday
+ * Returns logged-in user's birthday info
+ */
 router.get("/", async (req, res) => {
   const supabase = req.supabase;
   const userId = req.user?.id;
@@ -28,20 +26,37 @@ router.get("/", async (req, res) => {
       return res.status(404).json({ message: "Profile not found" });
     }
 
+    // If no birthday is set
     if (!data.date_of_birth) {
-      return res.json({ birthday: null, isBirthday: false });
+      return res.json({
+        birthday: {
+          birthday: null,
+          full_name: data.full_name,
+        },
+        isBirthday: false,
+      });
+    }
+
+    // Parse the date safely
+    const dob = new Date(data.date_of_birth);
+    if (isNaN(dob)) {
+      return res.json({
+        birthday: {
+          birthday: null,
+          full_name: data.full_name,
+        },
+        isBirthday: false,
+      });
     }
 
     const today = new Date();
-    const dob = new Date(data.date_of_birth);
-
     const isBirthday =
       dob.getUTCMonth() === today.getUTCMonth() &&
       dob.getUTCDate() === today.getUTCDate();
 
     res.json({
       birthday: {
-        date: data.date_of_birth,
+        birthday: data.date_of_birth, // matches frontend expectation
         full_name: data.full_name,
       },
       isBirthday,
@@ -51,4 +66,5 @@ router.get("/", async (req, res) => {
     res.status(500).json({ message: "Failed to load birthday information" });
   }
 });
+
 export default router;

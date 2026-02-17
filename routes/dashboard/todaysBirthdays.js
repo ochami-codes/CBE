@@ -17,8 +17,8 @@ router.get("/", async (req, res) => {
 
   try {
     const today = new Date();
-    const month = today.getMonth();
-    const date = today.getDate();
+    const month = today.getUTCMonth(); // UTC to match birthday comparison
+    const date = today.getUTCDate();
 
     // Fetch all members with a birthday
     const { data, error } = await supabase
@@ -32,13 +32,20 @@ router.get("/", async (req, res) => {
       return res.status(500).json({ error: "Failed to fetch birthdays" });
     }
 
-    // Filter in JS for today’s birthdays
     const todaysBirthdays = (data ?? []).filter((p) => {
       const dob = new Date(p.date_of_birth);
-      return dob.getMonth() === month && dob.getDate() === date;
+      if (isNaN(dob)) return false; // skip invalid dates
+      return dob.getUTCMonth() === month && dob.getUTCDate() === date;
     });
 
-    res.json(todaysBirthdays);
+    // Map to a consistent shape for frontend
+    const result = todaysBirthdays.map((p) => ({
+      id: p.id,
+      full_name: p.full_name,
+      date_of_birth: p.date_of_birth,
+    }));
+
+    res.json(result);
   } catch (err) {
     console.error("Today's birthdays route error:", err);
     res.status(500).json({ error: "Server error" });

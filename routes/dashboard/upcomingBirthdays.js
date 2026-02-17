@@ -18,7 +18,7 @@ router.get("/", async (req, res) => {
 
   try {
     const today = new Date();
-    const currentYear = today.getFullYear();
+    const currentYear = today.getUTCFullYear();
 
     // Fetch all members of the church
     const { data, error } = await supabase
@@ -31,25 +31,28 @@ router.get("/", async (req, res) => {
       return res.status(500).json({ error: "Failed to fetch birthdays" });
     }
 
-    // Filter for upcoming birthdays
-    const upcoming = data
+    const upcoming = (data ?? [])
       .map((member) => {
         if (!member.date_of_birth) return null;
 
         const dob = new Date(member.date_of_birth);
-        let nextBirthday = new Date(currentYear, dob.getMonth(), dob.getDate());
+        if (isNaN(dob)) return null;
+
+        let nextBirthday = new Date(currentYear, dob.getUTCMonth(), dob.getUTCDate());
 
         if (nextBirthday < today) {
-          nextBirthday.setFullYear(currentYear + 1);
+          nextBirthday.setUTCFullYear(currentYear + 1);
         }
 
         const diffTime = nextBirthday - today;
         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
-        return diffDays <= daysAhead ? { ...member, daysUntil: diffDays } : null;
+        return diffDays <= daysAhead
+          ? { id: member.id, full_name: member.full_name, date_of_birth: member.date_of_birth, days_left: diffDays }
+          : null;
       })
       .filter(Boolean)
-      .sort((a, b) => a.daysUntil - b.daysUntil);
+      .sort((a, b) => a.days_left - b.days_left);
 
     res.json(upcoming);
   } catch (err) {
