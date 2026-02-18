@@ -168,6 +168,7 @@ router.post("/", async (req, res) => {
       conference,
       church_id: church.id,
       role_id: roleId,
+      is_member: isFirstUser,
     });
 
     if (profileError) throw profileError;
