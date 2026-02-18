@@ -38,7 +38,7 @@ router.post("/", async (req, res) => {
     .from("membership_requests")
     .select("id")
     .eq("profile_id", profileId)
-    .eq("status", "pending")
+    .eq("membership_request_status", "pending")
     .maybeSingle();
 
   if (existing) {
@@ -49,7 +49,7 @@ router.post("/", async (req, res) => {
   const { error } = await supabase.from("membership_requests").insert({
     profile_id: profileId,
     church_id,
-    status: "pending",
+    membership_request_status: "pending",
   });
 
   if (error) {
@@ -70,9 +70,9 @@ router.get("/me", async (req, res) => {
 
   const { data, error } = await supabase
     .from("membership_requests")
-    .select("id, status, created_at, reviewed_at")
+    .select("id, membership_request_status, membership_requested_at, membership_reviewed_at")
     .eq("profile_id", profileId)
-    .order("created_at", { ascending: false })
+    .order("membership_requested_at", { ascending: false })
     .limit(1)
     .maybeSingle();
 

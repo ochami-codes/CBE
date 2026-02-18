@@ -14,12 +14,12 @@ router.get("/", async (req, res) => {
     .select(`
       id,
       profile_id,
-      status,
-      created_at,
-      reviewed_at,
+      membership_request_status,
+      membership_requested_at,
+      membership_reviewed_at,
       requester:profiles(full_name,email)
     `)
-    .order("created_at", { ascending: false });
+    .order("membership_requested_at", { ascending: false });
 
   if (error) return res.status(500).json({ message: error.message });
 
@@ -33,7 +33,7 @@ router.post("/:id/approve", async (req, res) => {
   const id = req.params.id;
   const { error } = await supabaseAdmin
     .from("membership_requests")
-    .update({ status: "approved", reviewed_at: new Date() })
+    .update({ membership_request_status: "approved", membership_reviewed_at: new Date() })
     .eq("id", id);
 
   if (error) return res.status(500).json({ message: error.message });
@@ -47,7 +47,7 @@ router.post("/:id/reject", async (req, res) => {
   const id = req.params.id;
   const { error } = await supabaseAdmin
     .from("membership_requests")
-    .update({ status: "rejected", reviewed_at: new Date() })
+    .update({ membership_request_status: "rejected", membership_reviewed_at: new Date() })
     .eq("id", id);
 
   if (error) return res.status(500).json({ message: error.message });
@@ -65,14 +65,14 @@ router.post("/invite/:id", async (req, res) => {
     .from("membership_requests")
     .select("id")
     .eq("profile_id", profileId)
-    .eq("status", "pending")
+    .eq("membership_request_status", "pending")
     .maybeSingle();
 
   if (existing) return res.status(400).json({ message: "Request already pending" });
 
   const { error } = await supabaseAdmin
     .from("membership_requests")
-    .insert({ profile_id: profileId, status: "pending" });
+    .insert({ profile_id: profileId, membership_request_status: "pending" });
 
   if (error) return res.status(500).json({ message: error.message });
   res.status(201).json({ success: true });
