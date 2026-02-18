@@ -70,7 +70,7 @@ router.get("/", async (req, res) => {
         role_name,
         active,
         created_at,
-        profiles (email)
+        profiles!members_id_fkey (email)
       `)
       .eq("church_id", church_id)
       .order("created_at", { ascending: false });

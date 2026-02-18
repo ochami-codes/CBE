@@ -15,11 +15,11 @@ router.get("/", async (req, res) => {
       id,
       profile_id,
       status,
-      requested_at,
+      created_at,
       reviewed_at,
       requester:profiles(full_name,email)
     `)
-    .order("requested_at", { ascending: false });
+    .order("created_at", { ascending: false });
 
   if (error) return res.status(500).json({ message: error.message });
 
