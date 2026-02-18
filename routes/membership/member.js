@@ -70,9 +70,9 @@ router.get("/me", async (req, res) => {
 
   const { data, error } = await supabase
     .from("membership_requests")
-    .select("id, status, requested_at, reviewed_at")
+    .select("id, status, created_at, reviewed_at")
     .eq("profile_id", profileId)
-    .order("requested_at", { ascending: false })
+    .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
 
