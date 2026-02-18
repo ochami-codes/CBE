@@ -17,8 +17,8 @@ router.get("/", requireAdmin, async (req, res) => {
       .select(`
         id,
         requested_role,
-        status,
-        created_at,
+        role_request_status,
+        role_requested_at,
         requester:profiles!role_requests_requested_by_fkey(
           id,
           full_name,
@@ -31,8 +31,8 @@ router.get("/", requireAdmin, async (req, res) => {
         )
       `)
       .eq("church_id", churchId)
-      .eq("status", "pending")
-      .order("created_at", { ascending: false });
+      .eq("role_request_status", "pending")
+      .order("role_requested_at", { ascending: false });
 
     if (error) throw error;
 
@@ -78,7 +78,7 @@ router.post(
       // 3️⃣ Mark request approved
       const { error: requestError } = await supabase
         .from("role_requests")
-        .update({ status: "approved" })
+        .update({ role_request_status: "approved" })
         .eq("id", id);
 
       if (requestError) throw requestError;
@@ -105,7 +105,7 @@ router.post(
     try {
       const { error } = await supabase
         .from("role_requests")
-        .update({ status: "rejected" })
+        .update({ role_request_status: "rejected" })
         .eq("id", id);
 
       if (error) throw error;

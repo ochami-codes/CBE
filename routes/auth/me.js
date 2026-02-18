@@ -55,9 +55,9 @@ router.get("/", async (req, res) => {
 
       supabaseAdmin
         .from("membership_requests")
-        .select("status")
+        .select("membership_request_status")
         .eq("profile_id", authUser.id)
-        .order("created_at", { ascending: false })
+        .order("membership_requested_at", { ascending: false })
         .limit(1)
         .maybeSingle(),
     ]);
@@ -118,7 +118,7 @@ router.get("/", async (req, res) => {
         is_member: isMember,
         membership_status: isMember
           ? "approved"
-          : membershipRequest?.status ?? "none",
+          : membershipRequest?.membership_request_status ?? "none",
       },
     });
   } catch (err) {

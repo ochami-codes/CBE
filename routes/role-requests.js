@@ -57,7 +57,7 @@ router.post("/", async (req, res) => {
       .select("id")
       .eq("member_id", member_id)
       .eq("requested_role", requested_role)
-      .eq("status", "pending")
+      .eq("role_request_status", "pending")
       .maybeSingle();
 
     if (existing) {
@@ -70,10 +70,10 @@ router.post("/", async (req, res) => {
       .from("role_requests")
       .insert({
         member_id,
-        requested_by: member_id,
+        role_requested_by: member_id,
         requested_role,
         church_id,
-        status: "pending",
+        role_request_status: "pending",
       })
       .select()
       .single();
@@ -106,7 +106,7 @@ router.get("/my-requests", async (req, res) => {
       .from("role_requests")
       .select("*")
       .eq("member_id", member_id)
-      .order("created_at", { ascending: false });
+      .order("role_requested_at", { ascending: false });
 
     if (error) throw error;
 

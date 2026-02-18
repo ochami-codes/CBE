@@ -21,7 +21,7 @@ router.get("/", requireAdmin, async (req, res) => {
     const { count, error } = await supabase
       .from("role_requests")
       .select("*", { count: "exact", head: true })
-      .eq("status", "pending")
+      .eq("role_request_status", "pending")
       .eq("church_id", churchId);
 
     if (error) throw error;
