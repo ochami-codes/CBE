@@ -29,14 +29,14 @@ export async function authMiddleware(req, res, next) {
     const { data: member } = await supabaseAdmin
       .from("member_full")
       .select(`
-        id,
+        profile_id,
         full_name,
         email,
         role_name,
         active,
         church_id
       `)
-      .eq("id", authUser.id)
+      .eq("profile_id", authUser.id)
       .maybeSingle();
 
     /* ------------------------------------------------

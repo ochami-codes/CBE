@@ -146,7 +146,7 @@ router.get("/", async (req, res) => {
     if (error) throw error;
 
     const members = (data ?? []).map((m) => ({
-      id: m.id,
+      profile_id: m.id,
       full_name: m.full_name,
       department: department ?? m.department_code,
       department_name: m.department_name,

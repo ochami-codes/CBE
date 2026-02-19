@@ -49,8 +49,8 @@ router.get("/", async (req, res) => {
 
       supabaseAdmin
         .from("member_full")
-        .select("id, role_name, active")
-        .eq("id", authUser.id)
+        .select("profile_id, role_name, active")
+        .eq("profile_id", authUser.id)
         .maybeSingle(),
 
       supabaseAdmin
