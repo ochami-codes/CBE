@@ -1,4 +1,3 @@
-// backend/routes/membership/admin.js
 import express from "express";
 const router = express.Router();
 
@@ -6,96 +5,193 @@ import { supabaseAdmin } from "../../supabaseClient.js";
 
 /* -------------------------
    GET /admin/membership-requests
-   Fetch all membership requests
+   Fetch all membership requests (church scoped)
 ------------------------- */
 router.get("/", async (req, res) => {
-  const { data, error } = await supabaseAdmin
-    .from("membership_requests")
-    .select(`
-      id,
-      profile_id,
-      membership_request_status,
-      membership_requested_at,
-      membership_reviewed_at,
-      requester:profiles(full_name,email)
-    `)
-    .order("membership_requested_at", { ascending: false });
+  try {
+    const churchId = req.user.church_id;
 
-  if (error) return res.status(500).json({ message: error.message });
+    const { data, error } = await supabaseAdmin
+      .from("member_full_dashboard")
+      .select(`
+        membership_request_id,
+        profile_id,
+        full_name,
+        email,
+        membership_request_status,
+        membership_requested_at,
+        membership_reviewed_at,
+        is_member
+      `)
+      .eq("church_id", churchId)
+      .not("membership_request_id", "is", null)
+      .order("membership_requested_at", { ascending: false });
 
-  res.json({ requests: data });
+    if (error) throw error;
+
+    res.json({ requests: data });
+
+  } catch (err) {
+    console.error("Fetch membership requests error:", err);
+    res.status(500).json({ message: "Failed to fetch membership requests" });
+  }
 });
+
 
 /* -------------------------
    POST /admin/membership-requests/:id/approve
 ------------------------- */
 router.post("/:id/approve", async (req, res) => {
-  const id = req.params.id;
-  const { error } = await supabaseAdmin
-    .from("membership_requests")
-    .update({ membership_request_status: "approved", membership_reviewed_at: new Date() })
-    .eq("id", id);
+  try {
+    const churchId = req.user.church_id;
+    const requestId = req.params.id;
 
-  if (error) return res.status(500).json({ message: error.message });
-  res.json({ success: true });
+    // 1️⃣ Get request + validate church ownership
+    const { data: request, error: fetchError } = await supabaseAdmin
+      .from("member_full_dashboard")
+      .select("profile_id, church_id")
+      .eq("membership_request_id", requestId)
+      .eq("church_id", churchId)
+      .maybeSingle();
+
+    if (fetchError || !request)
+      return res.status(404).json({ message: "Request not found" });
+
+    // 2️⃣ Approve request
+    const { error: updateError } = await supabaseAdmin
+      .from("membership_requests")
+      .update({
+        membership_request_status: "approved",
+        membership_reviewed_at: new Date()
+      })
+      .eq("id", requestId);
+
+    if (updateError) throw updateError;
+
+    // 3️⃣ Insert into members table
+    const { error: insertError } = await supabaseAdmin
+      .from("members")
+      .insert({
+        profile_id: request.profile_id,
+        church_id: churchId,
+        active: true
+      });
+
+    if (insertError) throw insertError;
+
+    res.json({ success: true });
+
+  } catch (err) {
+    console.error("Approve membership error:", err);
+    res.status(500).json({ message: "Failed to approve membership" });
+  }
 });
+
 
 /* -------------------------
    POST /admin/membership-requests/:id/reject
 ------------------------- */
 router.post("/:id/reject", async (req, res) => {
-  const id = req.params.id;
-  const { error } = await supabaseAdmin
-    .from("membership_requests")
-    .update({ membership_request_status: "rejected", membership_reviewed_at: new Date() })
-    .eq("id", id);
-
-  if (error) return res.status(500).json({ message: error.message });
-  res.json({ success: true });
-});
-
-/* -------------------------
-   POST /admin/membership-requests/invite/:id
-   Invite a profile who is not yet a member
-------------------------- */
-router.post("/invite/:id", async (req, res) => {
-  const profileId = req.params.id;
-
-  const { data: existing } = await supabaseAdmin
-    .from("membership_requests")
-    .select("id")
-    .eq("profile_id", profileId)
-    .eq("membership_request_status", "pending")
-    .maybeSingle();
-
-  if (existing) return res.status(400).json({ message: "Request already pending" });
-
-  const { error } = await supabaseAdmin
-    .from("membership_requests")
-    .insert({ profile_id: profileId, membership_request_status: "pending" });
-
-  if (error) return res.status(500).json({ message: error.message });
-  res.status(201).json({ success: true });
-});
-
-/* -------------------------
-   GET /admin/non-members
-   Fetch profiles not yet members or requested
-------------------------- */
-router.get("/non-members", async (req, res) => {
   try {
-    const { data, error } = await supabaseAdmin
-      .from("profiles")
-      .select("id, full_name, email")
-      .not("id", "in", supabaseAdmin
-        .from("membership_requests")
-        .select("profile_id")
-        .then(({ data: requests }) => requests.map(r => r.profile_id))
-      );
+    const churchId = req.user.church_id;
+    const requestId = req.params.id;
+
+    const { error } = await supabaseAdmin
+      .from("membership_requests")
+      .update({
+        membership_request_status: "rejected",
+        membership_reviewed_at: new Date()
+      })
+      .eq("id", requestId)
+      .eq("church_id", churchId);
 
     if (error) throw error;
 
-    res.json({ profiles: data });
+    res.json({ success: true });
+
+  } catch (err) {
+    console.error("Reject membership error:", err);
+    res.status(500).json({ message: "Failed to reject membership" });
+  }
+});
+
+
+/* -------------------------
+   POST /admin/membership-requests/invite/:id
+------------------------- */
+router.post("/invite/:id", async (req, res) => {
+  try {
+    const churchId = req.user.church_id;
+    const profileId = req.params.id;
+
+    // Check if already member
+    const { data: existingMember } = await supabaseAdmin
+      .from("members")
+      .select("id")
+      .eq("profile_id", profileId)
+      .eq("church_id", churchId)
+      .maybeSingle();
+
+    if (existingMember)
+      return res.status(400).json({ message: "Already a member" });
+
+    // Check if pending request exists
+    const { data: existingRequest } = await supabaseAdmin
+      .from("membership_requests")
+      .select("id")
+      .eq("profile_id", profileId)
+      .eq("church_id", churchId)
+      .eq("membership_request_status", "pending")
+      .maybeSingle();
+
+    if (existingRequest)
+      return res.status(400).json({ message: "Request already pending" });
+
+    // Insert request
+    const { error } = await supabaseAdmin
+      .from("membership_requests")
+      .insert({
+        profile_id: profileId,
+        church_id: churchId,
+        membership_request_status: "pending"
+      });
+
+    if (error) throw error;
+
+    res.status(201).json({ success: true });
+
+  } catch (err) {
+    console.error("Invite error:", err);
+    res.status(500).json({ message: "Failed to send invite" });
+  }
+});
+
+
+/* -------------------------
+   GET /admin/non-members
+   Fetch all non-members with status (church scoped)
+------------------------- */
+router.get("/non-members", async (req, res) => {
+  try {
+    const churchId = req.user.church_id;
+
+    const { data, error } = await supabaseAdmin
+      .from("member_full_dashboard")
+      .select(`
+        profile_id,
+        full_name,
+        email,
+        membership_request_status,
+        membership_requested_at,
+        is_member
+      `)
+      .eq("church_id", churchId)
+      .eq("is_member", false);
+
+    if (error) throw error;
+
+    res.json({ non_members: data });
+
   } catch (err) {
     console.error("Fetch non-members error:", err);
     res.status(500).json({ message: "Failed to fetch non-members" });
