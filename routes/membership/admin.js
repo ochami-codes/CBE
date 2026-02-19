@@ -5,8 +5,7 @@ import { supabaseAdmin } from "../../supabaseClient.js";
 
 /* -------------------------
    GET /admin/membership-requests
-   Fetch all membership requests for the current church,
-   normalize status for frontend ("pending" or "new")
+   Fetch ONLY pending membership requests
 ------------------------- */
 router.get("/", async (req, res) => {
   try {
@@ -16,7 +15,6 @@ router.get("/", async (req, res) => {
       return res.status(400).json({ message: "Church ID not found" });
     }
 
-    // Fetch all profiles in this church
     const { data, error } = await supabaseAdmin
       .from("member_full_dashboard")
       .select(`
@@ -25,31 +23,21 @@ router.get("/", async (req, res) => {
         full_name,
         email,
         membership_request_status,
-        membership_requested_at,
-        membership_reviewed_at,
-        is_member
+        membership_requested_at
       `)
       .eq("church_id", churchId)
+      .eq("membership_request_status", "pending") // ONLY pending
       .order("membership_requested_at", { ascending: false });
 
     if (error) throw error;
 
-    // Normalize status for frontend
-    const requests = data.map((r) => ({
-      ...r,
-      membership_request_status: r.membership_request_status
-        ? r.membership_request_status // keep "pending", "approved", etc.
-        : "new", // default for profiles without request
-    }));
-
-    res.json({ requests });
+    res.json({ requests: data });
 
   } catch (err) {
     console.error("Fetch membership requests error:", err);
     res.status(500).json({ message: "Failed to fetch membership requests" });
   }
 });
-
 /* -------------------------
    POST /admin/membership-requests/:id/approve
 ------------------------- */
