@@ -169,29 +169,45 @@ router.post("/invite/:id", async (req, res) => {
 
 /* -------------------------
    GET /admin/non-members
-   Fetch all non-members with status (church scoped)
+   Fetch all profiles in the church who are not yet members,
+   including their membership request status and requested date
 ------------------------- */
 router.get("/non-members", async (req, res) => {
   try {
-    const churchId = req.user.church_id;
+    const churchId = req.user?.church_id;
 
+    if (!churchId) {
+      return res.status(400).json({ message: "Church ID not found" });
+    }
+
+    // Fetch profiles from the member_full_dashboard view
     const { data, error } = await supabaseAdmin
       .from("member_full_dashboard")
       .select(`
         profile_id,
         full_name,
         email,
+        is_member,
         membership_request_status,
-        membership_requested_at,
-        is_member
+        membership_requested_at
       `)
       .eq("church_id", churchId)
-      .eq("is_member", false);
+      .not("is_member", "eq", true) // exclude current members
+      .order("full_name", { ascending: true });
 
     if (error) throw error;
 
-    res.json({ non_members: data });
+    // Format response to be frontend-ready
+    const non_members = data.map((p) => ({
+      id: p.profile_id,
+      full_name: p.full_name,
+      email: p.email,
+      is_member: p.is_member || false,
+      membership_request_status: p.membership_request_status || null,
+      membership_requested_at: p.membership_requested_at || null,
+    }));
 
+    res.json({ non_members });
   } catch (err) {
     console.error("Fetch non-members error:", err);
     res.status(500).json({ message: "Failed to fetch non-members" });
