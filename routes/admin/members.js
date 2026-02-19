@@ -6,20 +6,19 @@ const router = express.Router();
 /**
  * ADD MEMBER
  * POST /members
- * members.id === profiles.id
+ * Only store profile_id, church_id, role_name, department, active
  */
 router.post(
   "/",
-  
   requireRole(["Admin"]),
   async (req, res) => {
     const supabase = req.supabase;
     const { church_id } = req.user;
-    const { id, full_name, department, role_name = "Member" } = req.body;
+    const { profile_id, department, role_name = "Member" } = req.body;
 
-    if (!id || !full_name || !department) {
+    if (!profile_id || !department) {
       return res.status(400).json({
-        message: "id (from profiles), full_name, and department are required",
+        message: "profile_id (from profiles) and department are required",
       });
     }
 
@@ -27,11 +26,10 @@ router.post(
       const { data, error } = await supabase
         .from("members")
         .insert({
-          id, // 👈 ensures linkage to profiles
-          full_name,
+          profile_id,
+          church_id,
           department,
           role_name,
-          church_id,
           active: true,
         })
         .select()
@@ -45,15 +43,14 @@ router.post(
       });
     } catch (err) {
       console.error("Add member error:", err);
-      return res.status(500).json({
-        message: "Failed to add member",
-      });
+      return res.status(500).json({ message: "Failed to add member" });
     }
   }
 );
 
 /**
  * GET MEMBERS
+ * Use member_full_dashboard to fetch full_name/email cleanly
  */
 router.get("/", async (req, res) => {
   const supabase = req.supabase;
@@ -62,18 +59,18 @@ router.get("/", async (req, res) => {
 
   try {
     let query = supabase
-      .from("members")
+      .from("member_full")
       .select(`
-        id,
+        profile_id,
         full_name,
+        email,
         department,
         role_name,
         active,
-        created_at,
-        profiles!members_id_fkey (email)
+        created_at
       `)
       .eq("church_id", church_id)
-      .order("created_at", { ascending: false });
+      .order("full_name", { ascending: true });
 
     if (department) query = query.eq("department", department);
 
@@ -83,80 +80,68 @@ router.get("/", async (req, res) => {
     return res.json({ members: data });
   } catch (err) {
     console.error("Fetch members error:", err);
-    return res.status(500).json({
-      message: "Failed to fetch members",
-    });
+    return res.status(500).json({ message: "Failed to fetch members" });
   }
 });
 
 /**
  * UPDATE MEMBER
+ * Only update church-specific fields
  */
-router.put(
-  "/:id",
-  
-  requireRole(["Admin"]),
-  async (req, res) => {
-    const supabase = req.supabase;
-    const { id } = req.params;
-    const { full_name, department, role_name, active } = req.body;
-    const { church_id } = req.user;
+router.put("/:id", requireRole(["Admin"]), async (req, res) => {
+  const supabase = req.supabase;
+  const { id } = req.params; // member.id
+  const { department, role_name, active } = req.body;
+  const { church_id } = req.user;
 
-    if (!full_name && !department && !role_name && active === undefined) {
-      return res.status(400).json({ message: "Nothing to update" });
-    }
-
-    try {
-      const { data, error } = await supabase
-        .from("members")
-        .update({
-          ...(full_name && { full_name }),
-          ...(department && { department }),
-          ...(role_name && { role_name }),
-          ...(active !== undefined && { active }),
-        })
-        .eq("id", id)
-        .eq("church_id", church_id)
-        .select()
-        .single();
-
-      if (error) throw error;
-
-      return res.json({ message: "Member updated successfully", member: data });
-    } catch (err) {
-      console.error("Update member error:", err);
-      return res.status(500).json({ message: "Failed to update member" });
-    }
+  if (!department && !role_name && active === undefined) {
+    return res.status(400).json({ message: "Nothing to update" });
   }
-);
+
+  try {
+    const { data, error } = await supabase
+      .from("members")
+      .update({
+        ...(department && { department }),
+        ...(role_name && { role_name }),
+        ...(active !== undefined && { active }),
+      })
+      .eq("id", id)
+      .eq("church_id", church_id)
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    return res.json({ message: "Member updated successfully", member: data });
+  } catch (err) {
+    console.error("Update member error:", err);
+    return res.status(500).json({ message: "Failed to update member" });
+  }
+});
 
 /**
  * DELETE MEMBER
  */
-router.delete(
-  "/:id",
-  
-  requireRole(["Admin"]),
-  async (req, res) => {
-    const supabase = req.supabase;
-    const { id } = req.params;
-    const { church_id } = req.user;
+router.delete("/:id", requireRole(["Admin"]), async (req, res) => {
+  const supabase = req.supabase;
+  const { id } = req.params;
+  const { church_id } = req.user;
 
-    try {
-      const { error } = await supabase
-        .from("members")
-        .delete()
-        .eq("id", id)
-        .eq("church_id", church_id);
+  try {
+    const { error } = await supabase
+      .from("members")
+      .delete()
+      .eq("id", id)
+      .eq("church_id", church_id);
 
-      if (error) throw error;
+    if (error) throw error;
 
-      return res.json({ message: "Member removed successfully" });
-    } catch (err) {
-      console.error("Delete member error:", err);
-      return res.status(500).json({ message: "Failed to remove member" });
-    }
+    return res.json({ message: "Member removed successfully" });
+  } catch (err) {
+    console.error("Delete member error:", err);
+    return res.status(500).json({ message: "Failed to remove member" });
   }
-);
+});
 
 export default router;
