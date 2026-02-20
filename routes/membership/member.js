@@ -1,21 +1,19 @@
 import express from "express";
-
 const router = express.Router();
 
-/* ----------------------------------
+/* -------------------------
    POST /membership-requests
    Logged-in user requests membership
----------------------------------- */
+------------------------- */
 router.post("/", async (req, res) => {
   const supabase = req.supabase;
   const { id: profileId, is_member } = req.user;
 
-  // Already a member
   if (is_member) {
     return res.status(400).json({ message: "Already a member" });
   }
 
-  // 🔑 Always fetch latest church from DB
+  // Fetch latest church
   const { data: profile, error: profileError } = await supabase
     .from("profiles")
     .select("church_id")
@@ -34,36 +32,45 @@ router.post("/", async (req, res) => {
   const church_id = profile.church_id;
 
   // Prevent duplicate pending request
-  const { data: existing } = await supabase
+  const { data: existing, error: existingError } = await supabase
     .from("membership_requests")
     .select("id")
     .eq("profile_id", profileId)
     .eq("membership_request_status", "pending")
     .maybeSingle();
 
+  if (existingError) {
+    console.error(existingError);
+    return res.status(500).json({ message: "Failed to check existing requests" });
+  }
+
   if (existing) {
     return res.status(400).json({ message: "Request already pending" });
   }
 
-  // Create membership request
-  const { error } = await supabase.from("membership_requests").insert({
-    profile_id: profileId,
-    church_id,
-    membership_request_status: "pending",
-  });
+  // Create request
+  const { data, error } = await supabase
+    .from("membership_requests")
+    .insert({
+      profile_id: profileId,
+      church_id,
+      membership_request_status: "pending",
+    })
+    .select()
+    .single();
 
   if (error) {
     console.error(error);
-    return res.status(500).json({ message: "Failed to submit request" });
+    return res.status(500).json({ message: "Failed to submit membership request" });
   }
 
-  res.status(201).json({ success: true });
+  res.status(201).json({ request: data });
 });
 
-/* ----------------------------------
+/* -------------------------
    GET /membership-requests/me
-   Logged-in user checks request status
----------------------------------- */
+   Logged-in user checks latest request status
+------------------------- */
 router.get("/me", async (req, res) => {
   const supabase = req.supabase;
   const profileId = req.user.id;
@@ -78,7 +85,7 @@ router.get("/me", async (req, res) => {
 
   if (error) {
     console.error(error);
-    return res.status(500).json({ message: "Failed to load request" });
+    return res.status(500).json({ message: "Failed to load membership request" });
   }
 
   res.json({ request: data || null });
