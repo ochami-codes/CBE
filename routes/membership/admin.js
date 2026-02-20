@@ -46,47 +46,31 @@ router.post("/:id/approve", async (req, res) => {
     const churchId = req.user.church_id;
     const requestId = req.params.id;
 
-    // 1️⃣ Get request + validate church ownership
-    const { data: request, error: fetchError } = await supabaseAdmin
-      .from("member_full_dashboard")
-      .select("profile_id, church_id")
-      .eq("membership_request_id", requestId)
-      .eq("church_id", churchId)
-      .maybeSingle();
+    if (!churchId)
+      return res.status(400).json({ message: "Invalid church context" });
 
-    if (fetchError || !request)
-      return res.status(404).json({ message: "Request not found" });
+    // Call atomic database function
+    const { error } = await supabaseAdmin.rpc("approve_membership", {
+      request_id: requestId,
+      approver_church_id: churchId,
+    });
 
-    // 2️⃣ Approve request
-    const { error: updateError } = await supabaseAdmin
-      .from("membership_requests")
-      .update({
-        membership_request_status: "approved",
-        membership_reviewed_at: new Date()
-      })
-      .eq("id", requestId);
-
-    if (updateError) throw updateError;
-
-    // 3️⃣ Insert into members table
-    const { error: insertError } = await supabaseAdmin
-      .from("members")
-      .insert({
-        profile_id: request.profile_id,
-        church_id: churchId,
-        active: true
+    if (error) {
+      console.error("Approve membership RPC error:", error);
+      return res.status(400).json({
+        message: error.message || "Approval failed",
       });
+    }
 
-    if (insertError) throw insertError;
-
-    res.json({ success: true });
+    return res.json({ success: true });
 
   } catch (err) {
     console.error("Approve membership error:", err);
-    res.status(500).json({ message: "Failed to approve membership" });
+    return res.status(500).json({
+      message: "Failed to approve membership",
+    });
   }
 });
-
 
 /* -------------------------
    POST /admin/membership-requests/:id/reject
@@ -96,25 +80,34 @@ router.post("/:id/reject", async (req, res) => {
     const churchId = req.user.church_id;
     const requestId = req.params.id;
 
-    const { error } = await supabaseAdmin
+    const { data, error } = await supabaseAdmin
       .from("membership_requests")
       .update({
         membership_request_status: "rejected",
-        membership_reviewed_at: new Date()
+        membership_reviewed_at: new Date(),
       })
       .eq("id", requestId)
-      .eq("church_id", churchId);
+      .eq("church_id", churchId)
+      .eq("membership_request_status", "pending") // prevent double action
+      .select();
 
     if (error) throw error;
 
-    res.json({ success: true });
+    if (!data || data.length === 0) {
+      return res.status(404).json({
+        message: "Request not found or already processed",
+      });
+    }
+
+    return res.json({ success: true });
 
   } catch (err) {
     console.error("Reject membership error:", err);
-    res.status(500).json({ message: "Failed to reject membership" });
+    return res.status(500).json({
+      message: "Failed to reject membership",
+    });
   }
 });
-
 
 /* -------------------------
    POST /admin/membership-requests/invite/:id
