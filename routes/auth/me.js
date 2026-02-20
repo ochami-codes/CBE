@@ -1,120 +1,56 @@
 import express from "express";
-import { supabaseAuth, supabaseAdmin } from "../../supabaseClient.js";
+import { supabaseAdmin } from "../../supabaseClient.js";
 
 const router = express.Router();
 
-/**
- * GET /auth/me
- *
- * Single auth resolution endpoint for AuthContext
- * - Guest (signed in, not approved)
- * - Pending member
- * - Approved member
- */
 router.get("/", async (req, res) => {
   try {
     const authHeader = req.headers.authorization;
-    if (!authHeader?.startsWith("Bearer ")) {
-      return res.status(200).json({ user: null });
-    }
-
+    if (!authHeader?.startsWith("Bearer ")) return res.status(200).json({ user: null });
     const token = authHeader.split(" ")[1];
 
-    /* ------------------------
-       1️⃣ Validate Supabase token
-    ------------------------- */
-    const {
-      data: { user: authUser },
-      error: authError,
-    } = await supabaseAuth.auth.getUser(token);
+    const { data: { user: authUser }, error: authError } = await supabaseAdmin.auth.getUser(token);
+    if (authError || !authUser) return res.status(200).json({ user: null });
 
-    if (authError || !authUser) {
-      return res.status(200).json({ user: null });
-    }
+    const profileId = authUser.id;
 
-    /* ------------------------
-       2️⃣ Fetch profile (+ church) + member + membership request
-       Run in parallel to avoid slow spinner
-    ------------------------- */
-    const [
-      profileRes,
-      memberRes,
-      membershipReqRes,
-    ] = await Promise.all([
-      supabaseAdmin
-        .from("profiles")
-        .select("id, full_name, email, church_id, church:church_id(name)")
-        .eq("id", authUser.id)
-        .maybeSingle(),
+    // Fetch profile (including is_member) and join member info
+    const { data: profileData, error } = await supabaseAdmin
+      .from("profiles")
+      .select(`
+        id,
+        full_name,
+        email,
+        church_id,
+        is_member,
+        member:members!members_id_fkey(role_name, active)
+      `)
+      .eq("id", profileId)
+      .maybeSingle();
 
-      supabaseAdmin
-        .from("member_full")
-        .select("profile_id, role_name, active")
-        .eq("profile_id", authUser.id)
-        .maybeSingle(),
+    if (error || !profileData) return res.status(200).json({ user: null });
 
-      supabaseAdmin
-        .from("membership_requests")
-        .select("membership_request_status")
-        .eq("profile_id", authUser.id)
-        .order("membership_requested_at", { ascending: false })
-        .limit(1)
-        .maybeSingle(),
-    ]);
+    // Latest membership request
+    const { data: membershipRequest } = await supabaseAdmin
+      .from("membership_requests")
+      .select("membership_request_status")
+      .eq("profile_id", profileId)
+      .order("membership_requested_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
 
-    if (profileRes.error) {
-      console.error("profile fetch error:", profileRes.error);
-      return res.status(500).json({ user: null });
-    }
+    const isMember = profileData.is_member === true;
+    const roleName = isMember ? profileData.member?.role_name : "Guest";
 
-    if (memberRes.error) {
-      console.error("member fetch error:", memberRes.error);
-      return res.status(500).json({ user: null });
-    }
-
-    const profile = profileRes.data;
-    const member = memberRes.data;
-    const membershipRequest = membershipReqRes.data;
-
-    /* ------------------------
-       3️⃣ Derived flags & values
-    ------------------------- */
-    const isMember = !!member;
-    const isActive = member?.active !== false;
-
-    const roleName =
-      member?.role_name ||
-      "Guest";
-
-    const churchId = profile?.church_id || null;
-    const churchName = profile?.church?.name || null;
-
-    if (member && !isActive) {
-      return res.status(403).json({
-        user: null,
-        message: "Account deactivated",
-      });
-    }
-
-    /* ------------------------
-       4️⃣ Unified response for AuthContext
-    ------------------------- */
     return res.status(200).json({
       user: {
-        id: authUser.id,
-        email: authUser.email,
-        full_name:
-          profile?.full_name ||
-          authUser.user_metadata?.full_name ||
-          authUser.email?.split("@")[0] ||
-          "Guest",
-
+        id: profileId,
+        email: profileData.email,
+        full_name: profileData.full_name || authUser.email.split("@")[0] || "Guest",
         role_name: roleName,
-
-        church_id: churchId,
-        church_name: churchName,
-
-        active: true,
+        church_id: profileData.church_id,
+        church_name: null, // optional: fetch church name separately if needed
+        active: profileData.member?.active ?? true,
         is_member: isMember,
         membership_status: isMember
           ? "approved"
