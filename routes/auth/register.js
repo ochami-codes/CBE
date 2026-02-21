@@ -186,7 +186,6 @@ router.post("/", async (req, res) => {
         .from("members")
         .insert({
           id: userId,
-          full_name,
           role_name: "Admin",
           active: true,
           church_id: church.id,
