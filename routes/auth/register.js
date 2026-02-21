@@ -69,13 +69,15 @@ router.post("/", async (req, res) => {
     const normalizedPhone = normalizeKenyanPhone(phone);
     const finalChurchName = buildFullChurchName(baseName);
 
-    /* ------------------ Find or create church ------------------ */
+    /* ------------------ Find or Create Church ------------------ */
     let church;
-    const { data: existingChurch, error: churchError } = await supabaseAdmin
-      .from("churches")
-      .select("*")
-      .eq("name", finalChurchName)
-      .maybeSingle();
+
+    const { data: existingChurch, error: churchError } =
+      await supabaseAdmin
+        .from("churches")
+        .select("*")
+        .eq("name", finalChurchName)
+        .maybeSingle();
 
     if (churchError) throw churchError;
 
@@ -90,6 +92,7 @@ router.post("/", async (req, res) => {
           .single();
 
       if (insertChurchError) throw insertChurchError;
+
       church = newChurch;
 
       // Seed default departments
@@ -106,18 +109,19 @@ router.post("/", async (req, res) => {
         .insert(departments.map((d) => ({ ...d, church_id: church.id })));
     }
 
-    /* ------------------ Determine first user ------------------ */
-    const { data: existingProfiles, error: profilesError } =
+    /* ------------------ Determine First Member ------------------ */
+    const { data: existingMembers, error: memberCheckError } =
       await supabaseAdmin
         .from("profiles")
         .select("id")
-        .eq("church_id", church.id);
+        .eq("church_id", church.id)
+        .eq("is_member", true);
 
-    if (profilesError) throw profilesError;
+    if (memberCheckError) throw memberCheckError;
 
-    const isFirstUser = existingProfiles.length === 0;
+    const isFirstUser = existingMembers.length === 0;
 
-    /* ------------------ Fetch roles ------------------ */
+    /* ------------------ Fetch Roles ------------------ */
     const { data: adminRole } = await supabaseAdmin
       .from("roles")
       .select("id")
@@ -136,12 +140,13 @@ router.post("/", async (req, res) => {
 
     const roleId = isFirstUser ? adminRole.id : guestRole.id;
 
-    /* ------------------ Create auth user ------------------ */
+    /* ------------------ Create Auth User ------------------ */
     const { data: authData, error: authError } =
       await supabaseAuth.auth.signUp({
         email,
         password,
         options: {
+          data: { full_name }, // passed to trigger
           emailRedirectTo: `${process.env.FRONTEND_URL}/auth/callback`,
         },
       });
@@ -157,36 +162,39 @@ router.post("/", async (req, res) => {
 
     const userId = authData.user.id;
 
-    /* ------------------ Create profile ------------------ */
-    const { error: profileError } = await supabaseAdmin.from("profiles").insert({
-      id: userId,
-      full_name,
-      email,
-      phone: normalizedPhone,
-      date_of_birth,
-      gender,
-      conference,
-      church_id: church.id,
-      role_id: roleId,
-      is_member: isFirstUser,
-    });
-
-    if (profileError) throw profileError;
-
-    /* ------------------ Create member entry for first user ------------------ */
-    if (isFirstUser) {
-      const { error: memberError } = await supabaseAdmin.from("members").insert({
-        id: userId,
+    /* ------------------ Update Profile (Trigger Already Created It) ------------------ */
+    const { error: profileUpdateError } = await supabaseAdmin
+      .from("profiles")
+      .update({
         full_name,
-        role_name: "Admin",
-        active: true,
+        email,
+        phone: normalizedPhone,
+        date_of_birth,
+        gender,
+        conference,
         church_id: church.id,
-      });
+        role_id: roleId,
+        is_member: isFirstUser,
+      })
+      .eq("id", userId);
 
-      if (memberError) throw memberError;
+    if (profileUpdateError) throw profileUpdateError;
+
+    /* ------------------ Create Member Record (First User Only) ------------------ */
+    if (isFirstUser) {
+      const { error: memberInsertError } = await supabaseAdmin
+        .from("members")
+        .insert({
+          id: userId,
+          full_name,
+          role_name: "Admin",
+          active: true,
+          church_id: church.id,
+        });
+
+      if (memberInsertError) throw memberInsertError;
     }
 
-    /* ------------------ Success ------------------ */
     return res.status(201).json({
       message: isFirstUser
         ? "Registration successful. You are the church Admin."
