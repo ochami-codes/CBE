@@ -3,7 +3,10 @@ import { supabaseAuth, supabaseAdmin } from "../../supabaseClient.js";
 
 const router = express.Router();
 
-/* ------------------ Helpers ------------------ */
+/* -----------------------------
+   Helpers
+----------------------------- */
+
 const sanitizeChurchBaseName = (name) =>
   name
     .replace(/\b(sda|church|seventh day adventist)\b/gi, "")
@@ -25,7 +28,10 @@ const normalizeKenyanPhone = (phone) => {
   return p;
 };
 
-/* ------------------ POST /auth/register ------------------ */
+/* -----------------------------
+   REGISTER ROUTE
+----------------------------- */
+
 router.post("/", async (req, res) => {
   try {
     const {
@@ -39,7 +45,8 @@ router.post("/", async (req, res) => {
       church_name,
     } = req.body;
 
-    /* ------------------ Validation ------------------ */
+    /* ---------- Validation ---------- */
+
     if (
       !full_name ||
       !email ||
@@ -62,40 +69,34 @@ router.post("/", async (req, res) => {
     }
 
     const baseName = sanitizeChurchBaseName(church_name);
-    if (!baseName) {
-      return res.status(400).json({ message: "Invalid church name" });
-    }
-
     const normalizedPhone = normalizeKenyanPhone(phone);
     const finalChurchName = buildFullChurchName(baseName);
 
-    /* ------------------ Find or Create Church ------------------ */
+    /* ---------- Find or Create Church ---------- */
+
     let church;
 
-    const { data: existingChurch, error: churchError } =
-      await supabaseAdmin
-        .from("churches")
-        .select("*")
-        .eq("name", finalChurchName)
-        .maybeSingle();
-
-    if (churchError) throw churchError;
+    const { data: existingChurch } = await supabaseAdmin
+      .from("churches")
+      .select("*")
+      .eq("name", finalChurchName)
+      .maybeSingle();
 
     if (existingChurch) {
       church = existingChurch;
     } else {
-      const { data: newChurch, error: insertChurchError } =
+      const { data: newChurch, error: churchInsertError } =
         await supabaseAdmin
           .from("churches")
           .insert({ name: finalChurchName })
           .select()
           .single();
 
-      if (insertChurchError) throw insertChurchError;
+      if (churchInsertError) throw churchInsertError;
 
       church = newChurch;
 
-      // Seed default departments
+      /* Seed Departments */
       const departments = [
         { name: "Children", code: "children" },
         { name: "Youth", code: "youth" },
@@ -106,22 +107,26 @@ router.post("/", async (req, res) => {
 
       await supabaseAdmin
         .from("departments")
-        .insert(departments.map((d) => ({ ...d, church_id: church.id })));
+        .insert(
+          departments.map((d) => ({
+            ...d,
+            church_id: church.id,
+          }))
+        );
     }
 
-    /* ------------------ Determine First Member ------------------ */
-    const { data: existingMembers, error: memberCheckError } =
-      await supabaseAdmin
-        .from("profiles")
-        .select("id")
-        .eq("church_id", church.id)
-        .eq("is_member", true);
+    /* ---------- Determine First User ---------- */
 
-    if (memberCheckError) throw memberCheckError;
+    const { data: adminProfiles } = await supabaseAdmin
+      .from("profiles")
+      .select("id")
+      .eq("church_id", church.id)
+      .eq("is_member", true);
 
-    const isFirstUser = existingMembers.length === 0;
+    const isFirstUser = (adminProfiles?.length || 0) === 0;
 
-    /* ------------------ Fetch Roles ------------------ */
+    /* ---------- Fetch Roles ---------- */
+
     const { data: adminRole } = await supabaseAdmin
       .from("roles")
       .select("id")
@@ -135,18 +140,21 @@ router.post("/", async (req, res) => {
       .single();
 
     if (!adminRole?.id || !guestRole?.id) {
-      return res.status(500).json({ message: "Role configuration error" });
+      return res.status(500).json({
+        message: "Role configuration error",
+      });
     }
 
     const roleId = isFirstUser ? adminRole.id : guestRole.id;
 
-    /* ------------------ Create Auth User ------------------ */
+    /* ---------- Create Auth User ---------- */
+
     const { data: authData, error: authError } =
       await supabaseAuth.auth.signUp({
         email,
         password,
         options: {
-          data: { full_name }, // passed to trigger
+          data: { full_name },
           emailRedirectTo: `${process.env.FRONTEND_URL}/auth/callback`,
         },
       });
@@ -162,7 +170,23 @@ router.post("/", async (req, res) => {
 
     const userId = authData.user.id;
 
-    /* ------------------ Update Profile (Trigger Already Created It) ------------------ */
+    /* ---------- Wait for Trigger Sync ---------- */
+    await new Promise((resolve) => setTimeout(resolve, 500));
+
+    /* ---------- Verify Profile Created By Trigger ---------- */
+
+    const { data: profile } = await supabaseAdmin
+      .from("profiles")
+      .select("*")
+      .eq("id", userId)
+      .maybeSingle();
+
+    if (!profile) {
+      throw new Error("Profile record not found after signup");
+    }
+
+    /* ---------- Update Profile ---------- */
+
     const { error: profileUpdateError } = await supabaseAdmin
       .from("profiles")
       .update({
@@ -180,18 +204,19 @@ router.post("/", async (req, res) => {
 
     if (profileUpdateError) throw profileUpdateError;
 
-    /* ------------------ Create Member Record (First User Only) ------------------ */
+    /* ---------- Bootstrap Member Table ---------- */
+
     if (isFirstUser) {
-      const { error: memberInsertError } = await supabaseAdmin
+      const { error: memberError } = await supabaseAdmin
         .from("members")
         .insert({
-          id: userId,
+          profile_id: userId,
           role_name: "Admin",
           active: true,
           church_id: church.id,
         });
 
-      if (memberInsertError) throw memberInsertError;
+      if (memberError) throw memberError;
     }
 
     return res.status(201).json({
@@ -201,7 +226,9 @@ router.post("/", async (req, res) => {
     });
   } catch (err) {
     console.error("Registration error:", err);
-    return res.status(500).json({ message: "Registration failed" });
+    return res.status(500).json({
+      message: err.message || "Registration failed",
+    });
   }
 });
 
