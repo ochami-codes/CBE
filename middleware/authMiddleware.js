@@ -24,41 +24,49 @@ export async function authMiddleware(req, res, next) {
     }
 
     /* ------------------------------------------------
-       2️⃣ Resolve identity from member_full (optional)
+       2️⃣ Fetch profile (SOURCE OF TRUTH)
     ------------------------------------------------ */
-    const { data: member } = await supabaseAdmin
-      .from("member_full")
+    const { data: profile, error: profileError } = await supabaseAdmin
+      .from("profiles")
       .select(`
-        profile_id,
+        id,
         full_name,
         email,
-        role_name,
-        active,
-        church_id
+        church_id,
+        is_member,
+        members:members!members_id_fkey(role_name, active)
       `)
-      .eq("profile_id", authUser.id)
+      .eq("id", authUser.id)
       .maybeSingle();
+
+    if (profileError || !profile) {
+      return res.status(401).json({ message: "Profile not found" });
+    }
 
     /* ------------------------------------------------
        3️⃣ Block deactivated members
     ------------------------------------------------ */
-    if (member && member.active === false) {
+    if (profile.members?.active === false) {
       return res.status(403).json({ message: "Account deactivated" });
     }
 
     /* ------------------------------------------------
        4️⃣ Attach normalized user context
     ------------------------------------------------ */
+    const isMember = profile.is_member === true;
+
     req.user = {
-      id: authUser.id, // Supabase UID = profile_id
-      email: member?.email ?? authUser.email,
+      id: profile.id,
+      email: profile.email ?? authUser.email,
       full_name:
-        member?.full_name ||
+        profile.full_name ||
         authUser.user_metadata?.full_name ||
         "Guest",
-      role_name: member?.role_name || "Guest",
-      church_id: member?.church_id || null,
-      is_member: !!member,
+      role_name: isMember
+        ? profile.members?.role_name || "Member"
+        : "Guest",
+      church_id: profile.church_id || null,
+      is_member: isMember,
     };
 
     next();
