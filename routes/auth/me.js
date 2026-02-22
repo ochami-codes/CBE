@@ -50,7 +50,11 @@ router.get("/", async (req, res) => {
       console.error("Profile fetch error:", profileError);
       return res.status(200).json({ user: null });
     }
-
+    const { data: church } = await supabaseAdmin
+  .from("churches")
+  .select("name")
+  .eq("id", profile.church_id)
+  .maybeSingle();
     /* ---------------------------------
        4️⃣ Fetch Member Record (if exists)
     ---------------------------------- */
@@ -95,7 +99,7 @@ router.get("/", async (req, res) => {
           ? member?.role_name || "Member"
           : "Guest",
         church_id: profile.church_id ?? null,
-        church_name: null, // fetch separately if needed
+        church_name: church?.name ?? null,
         active: member?.active ?? true,
         is_member: isMember,
         membership_status: isMember

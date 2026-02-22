@@ -22,8 +22,7 @@ router.get("/", async (req, res) => {
         phone,
         email,
         church_id,
-        is_member,
-        members:members!members_id_fkey(role_name, active)
+        is_member
       `)
       .eq("id", userId)
       .single();
@@ -35,9 +34,18 @@ router.get("/", async (req, res) => {
     }
 
     /* ---------------------------------
-       2️⃣ Giving summary (VIEW only for reporting)
+       2️⃣ Fetch membership info separately (safer)
     ---------------------------------- */
-    const { data: contributions, error: givingError } = await supabase
+    const { data: member } = await supabase
+      .from("members")
+      .select("role_name, active")
+      .eq("profile_id", userId)
+      .maybeSingle();
+
+    /* ---------------------------------
+       3️⃣ Giving summary (VIEW - reporting only)
+    ---------------------------------- */
+    const { data: contributions } = await supabase
       .from("member_giving_summary")
       .select(`
         fund_name,
@@ -48,25 +56,21 @@ router.get("/", async (req, res) => {
       `)
       .eq("profile_id", userId);
 
-    if (givingError) {
-      console.error("Giving summary error:", givingError);
-    }
-
     const isMember = profile.is_member === true;
 
     /* ---------------------------------
-       3️⃣ Respond
+       4️⃣ Respond
     ---------------------------------- */
     return res.json({
       profile: {
         id: profile.id,
-        full_name: profile.full_name,
+        full_name: profile.full_name || null,
         phone: profile.phone || null,
         email: profile.email || null,
         role_name: isMember
-          ? profile.members?.role_name || "Member"
+          ? member?.role_name || "Member"
           : "Guest",
-        active: profile.members?.active ?? true,
+        active: member?.active ?? true,
         church_id: profile.church_id || null,
         is_member: isMember,
       },
@@ -80,4 +84,5 @@ router.get("/", async (req, res) => {
     });
   }
 });
+
 export default router;
