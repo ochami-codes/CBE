@@ -50,7 +50,7 @@ router.post(
 
 /**
  * GET MEMBERS
- * Use member_full_dashboard to fetch full_name/email cleanly
+ * Join members + profiles directly (avoid misleading view data)
  */
 router.get("/", async (req, res) => {
   const supabase = req.supabase;
@@ -59,31 +59,52 @@ router.get("/", async (req, res) => {
 
   try {
     let query = supabase
-      .from("member_full")
+      .from("members")
       .select(`
+        id,
         profile_id,
-        full_name,
-        email,
-        department,
         role_name,
         active,
-        created_at
+        department,
+        created_at,
+        profiles!inner (
+          full_name,
+          email,
+          church_id
+        )
       `)
       .eq("church_id", church_id)
-      .order("full_name", { ascending: true });
+      .order("profiles.full_name", { ascending: true });
 
-    if (department) query = query.eq("department", department);
+    if (department) {
+      query = query.eq("department", department);
+    }
 
     const { data, error } = await query;
+
     if (error) throw error;
 
-    return res.json({ members: data });
+    /* Normalize response */
+    const members = (data || []).map(m => ({
+      id: m.id,
+      profile_id: m.profile_id,
+      full_name: m.profiles?.full_name || null,
+      email: m.profiles?.email || null,
+      department: m.department,
+      role_name: m.role_name,
+      active: m.active,
+      created_at: m.created_at,
+    }));
+
+    return res.json({ members });
+
   } catch (err) {
     console.error("Fetch members error:", err);
-    return res.status(500).json({ message: "Failed to fetch members" });
+    return res.status(500).json({
+      message: "Failed to fetch members",
+    });
   }
 });
-
 /**
  * UPDATE MEMBER
  * Only update church-specific fields
