@@ -1,4 +1,3 @@
-// backend/routes/auth/login.js
 import express from "express";
 import { supabaseAuth, supabaseAdmin } from "../../supabaseClient.js";
 
@@ -51,22 +50,45 @@ router.post("/", async (req, res) => {
           full_name,
           email,
           church_id,
-          is_member,
-          members:members!members_id_fkey(role_name, active)
+          is_member
         `)
         .eq("id", user.id)
-        .single();
+        .maybeSingle();
 
-    if (profileError || !profile) {
+    if (profileError) {
+      console.error("Profile fetch error:", profileError);
+      return res.status(500).json({
+        message: "Failed to fetch profile",
+      });
+    }
+
+    if (!profile) {
       return res.status(401).json({
         message: "Profile record not found",
       });
     }
 
     /* ---------------------------------
-       4️⃣ Block deactivated members
+       4️⃣ Fetch member record (if exists)
     ---------------------------------- */
-    if (profile.members?.active === false) {
+    const { data: member, error: memberError } =
+      await supabaseAdmin
+        .from("members")
+        .select("role_name, active")
+        .eq("profile_id", user.id)
+        .maybeSingle();
+
+    if (memberError) {
+      console.error("Member fetch error:", memberError);
+      return res.status(500).json({
+        message: "Failed to fetch membership status",
+      });
+    }
+
+    /* ---------------------------------
+       5️⃣ Block deactivated members
+    ---------------------------------- */
+    if (member?.active === false) {
       return res.status(403).json({
         message: "Your account has been deactivated",
       });
@@ -75,7 +97,7 @@ router.post("/", async (req, res) => {
     const isMember = profile.is_member === true;
 
     /* ---------------------------------
-       5️⃣ Success
+       6️⃣ Success
     ---------------------------------- */
     return res.json({
       access_token: session.access_token,
@@ -84,11 +106,11 @@ router.post("/", async (req, res) => {
         id: profile.id,
         full_name: profile.full_name,
         email: profile.email,
-        role_name: isMember
-          ? profile.members?.role_name || "Member"
-          : "Guest",
         church_id: profile.church_id || null,
-        active: profile.members?.active ?? true,
+        role_name: isMember
+          ? member?.role_name || "Member"
+          : "Guest",
+        active: member?.active ?? true,
         is_member: isMember,
       },
     });
