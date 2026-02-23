@@ -91,7 +91,6 @@ router.post("/:id/reject", requireChurch, async (req, res) => {
       .eq("id", requestId)
       .eq("church_id", churchId)
       .eq("membership_request_status", "pending")
-      .is("processed_at", null)
       .select();
 
     if (error) throw error;

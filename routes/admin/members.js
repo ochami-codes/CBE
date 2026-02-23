@@ -74,7 +74,10 @@ router.get("/", async (req, res) => {
         )
       `)
       .eq("church_id", church_id)
-      .order("profiles.full_name", { ascending: true });
+      .order("full_name", {
+  ascending: true,
+  foreignTable: "profiles",
+});
 
     if (department) {
       query = query.eq("department", department);
