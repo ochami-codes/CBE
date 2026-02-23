@@ -1,24 +1,25 @@
 // routes/conferences.js
 import express from "express";
+import { supabaseAdmin } from "../supabaseClient.js";
 
 const router = express.Router();
+
 router.get("/", async (req, res) => {
   try {
-    const result = await db.query(
-      "SELECT id, name FROM conferences ORDER BY name ASC"
-    );
+    const { data, error } = await supabaseAdmin
+      .from("conferences")
+      .select("id, name, conference_code")
+      .order("name", { ascending: true });
 
-    res.json({
-      conferences: result.rows || [],
-    });
+    if (error) throw error;
 
+    res.json({ conferences: data });
   } catch (err) {
-    console.error("Fetch conferences error:", err);
-
+    console.error("Conferences error:", err);
     res.status(500).json({
       message: "Failed to fetch conferences",
-      conferences: [],
     });
   }
 });
+
 export default router;
