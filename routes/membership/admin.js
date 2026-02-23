@@ -186,6 +186,7 @@ router.get("/non-members", requireChurch, async (req, res) => {
         profile_id,
         full_name,
         email,
+        phone,
         is_member,
         membership_request_status,
         membership_requested_at
@@ -200,6 +201,7 @@ router.get("/non-members", requireChurch, async (req, res) => {
       id: p.profile_id,
       full_name: p.full_name,
       email: p.email,
+      phone: p.phone,
       is_member: !!p.is_member,
       membership_request_status: p.membership_request_status || null,
       membership_requested_at: p.membership_requested_at || null
