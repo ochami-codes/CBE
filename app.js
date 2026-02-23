@@ -26,7 +26,7 @@ import attendanceRoutes from "./routes/attendance.js";
 import myRequest from "./routes/role-requests.js";
 import { authMiddleware } from "./middleware/authMiddleware.js";
 import requireAdmin from "./middleware/requireAdmin.js";
-
+import conferenceRoutes from "./routes/conferences.js";
 import { supabaseAdmin } from "./supabaseClient.js";
 
 const app = express();
@@ -44,7 +44,7 @@ app.use((req, res, next) => {
 /* ------------------ Public routes ------------------ */
 app.use("/auth", authRoutes);
 app.use("/churches", churchRoutes);
-
+app.use("/conferences", conferenceRoutes);
 /* ------------------ Dashboard routes (auth optional inside route) ------------------ */
 app.use("/dashboard/daily-verse", verseRoutes);
 app.use("/dashboard/announcements", announcementRoutes);

@@ -15,6 +15,12 @@ const sanitizeChurchBaseName = (name) =>
 
 const buildFullChurchName = (baseName) => `${baseName} SDA Church`;
 
+const generateChurchCode = (name) =>
+  name
+    .toLowerCase()
+    .replace(/\s+/g, "-")
+    .replace(/[^a-z0-9-]/g, "");
+
 const isValidKenyanPhone = (phone) => {
   if (!phone) return false;
   const cleaned = phone.replace(/\s+/g, "");
@@ -41,7 +47,7 @@ router.post("/", async (req, res) => {
       phone,
       date_of_birth,
       gender,
-      conference,
+      conference_id,
       church_name,
     } = req.body;
 
@@ -54,7 +60,7 @@ router.post("/", async (req, res) => {
       !phone ||
       !date_of_birth ||
       !gender ||
-      !conference ||
+      !conference_id ||
       !church_name
     ) {
       return res.status(400).json({
@@ -69,17 +75,33 @@ router.post("/", async (req, res) => {
     }
 
     const baseName = sanitizeChurchBaseName(church_name);
-    const normalizedPhone = normalizeKenyanPhone(phone);
     const finalChurchName = buildFullChurchName(baseName);
+    const churchCode = generateChurchCode(baseName);
+    const normalizedPhone = normalizeKenyanPhone(phone);
 
-    /* ---------- Find or Create Church ---------- */
+    /* ---------- Validate Conference ---------- */
+
+    const { data: conference } = await supabaseAdmin
+      .from("conferences")
+      .select("id")
+      .eq("id", conference_id)
+      .maybeSingle();
+
+    if (!conference) {
+      return res.status(400).json({
+        message: "Invalid conference selected",
+      });
+    }
+
+    /* ---------- Find or Create Church (Scoped to Conference) ---------- */
 
     let church;
 
     const { data: existingChurch } = await supabaseAdmin
       .from("churches")
       .select("*")
-      .eq("name", finalChurchName)
+      .eq("church_code", churchCode)
+      .eq("conference_id", conference_id)
       .maybeSingle();
 
     if (existingChurch) {
@@ -88,42 +110,58 @@ router.post("/", async (req, res) => {
       const { data: newChurch, error: churchInsertError } =
         await supabaseAdmin
           .from("churches")
-          .insert({ name: finalChurchName })
+          .insert({
+            name: finalChurchName,
+            church_code: churchCode,
+            conference_id,
+          })
           .select()
           .single();
 
-      if (churchInsertError) throw churchInsertError;
+      if (churchInsertError) {
+        // Handle race condition safely
+        if (churchInsertError.code === "23505") {
+          const { data: retryChurch } = await supabaseAdmin
+            .from("churches")
+            .select("*")
+            .eq("church_code", churchCode)
+            .eq("conference_id", conference_id)
+            .single();
 
-      church = newChurch;
+          church = retryChurch;
+        } else {
+          throw churchInsertError;
+        }
+      } else {
+        church = newChurch;
 
-      /* Seed Departments */
-      const departments = [
-        { name: "Children", code: "children" },
-        { name: "Youth", code: "youth" },
-        { name: "Treasury", code: "treasury" },
-        { name: "Communication", code: "communication" },
-        { name: "Sabbath School", code: "sabbath_school" },
-      ];
+        /* Seed Departments (Only On First Creation) */
+        const departments = [
+          { name: "Children", code: "children" },
+          { name: "Youth", code: "youth" },
+          { name: "Treasury", code: "treasury" },
+          { name: "Communication", code: "communication" },
+          { name: "Sabbath School", code: "sabbath_school" },
+        ];
 
-      await supabaseAdmin
-        .from("departments")
-        .insert(
+        await supabaseAdmin.from("departments").insert(
           departments.map((d) => ({
             ...d,
             church_id: church.id,
           }))
         );
+      }
     }
 
-    /* ---------- Determine First User ---------- */
+    /* ---------- Determine First Approved Member ---------- */
 
-    const { data: adminProfiles } = await supabaseAdmin
-      .from("profiles")
+    const { data: approvedMembers } = await supabaseAdmin
+      .from("members")
       .select("id")
       .eq("church_id", church.id)
-      .eq("is_member", true);
+      .eq("active", true);
 
-    const isFirstUser = (adminProfiles?.length || 0) === 0;
+    const isFirstUser = (approvedMembers?.length || 0) === 0;
 
     /* ---------- Fetch Roles ---------- */
 
@@ -170,16 +208,23 @@ router.post("/", async (req, res) => {
 
     const userId = authData.user.id;
 
-    /* ---------- Wait for Trigger Sync ---------- */
-    await new Promise((resolve) => setTimeout(resolve, 500));
+    /* ---------- Wait for Profile Trigger ---------- */
 
-    /* ---------- Verify Profile Created By Trigger ---------- */
+    let profile;
+    for (let i = 0; i < 5; i++) {
+      const { data } = await supabaseAdmin
+        .from("profiles")
+        .select("*")
+        .eq("id", userId)
+        .maybeSingle();
 
-    const { data: profile } = await supabaseAdmin
-      .from("profiles")
-      .select("*")
-      .eq("id", userId)
-      .maybeSingle();
+      if (data) {
+        profile = data;
+        break;
+      }
+
+      await new Promise((r) => setTimeout(r, 300));
+    }
 
     if (!profile) {
       throw new Error("Profile record not found after signup");
@@ -195,28 +240,32 @@ router.post("/", async (req, res) => {
         phone: normalizedPhone,
         date_of_birth,
         gender,
-        conference,
+        conference_id,
         church_id: church.id,
         role_id: roleId,
-        is_member: isFirstUser,
+        is_member: isFirstUser, // true only for first user
       })
       .eq("id", userId);
 
     if (profileUpdateError) throw profileUpdateError;
 
-    /* ---------- Bootstrap Member Table ---------- */
+    /* ---------- Membership Logic ---------- */
 
     if (isFirstUser) {
-      const { error: memberError } = await supabaseAdmin
-        .from("members")
-        .insert({
-          profile_id: userId,
-          role_name: "Admin",
-          active: true,
-          church_id: church.id,
-        });
-
-      if (memberError) throw memberError;
+      // Auto-approve first user
+      await supabaseAdmin.from("members").insert({
+        profile_id: userId,
+        church_id: church.id,
+        role_name: "Admin",
+        active: true,
+      });
+    } else {
+      // Everyone else starts as pending
+      await supabaseAdmin.from("membership_requests").insert({
+        profile_id: userId,
+        church_id: church.id,
+        status: "pending",
+      });
     }
 
     return res.status(201).json({
