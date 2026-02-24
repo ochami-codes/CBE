@@ -22,6 +22,7 @@ import upcomingBirthdays from "./routes/dashboard/upcomingBirthdays.js";
 import todaysBirthdayRoutes from "./routes/dashboard/todaysBirthdays.js";
 import departmentRoutes from "./routes/departments.js";
 import memberRoutes from "./routes/members.js";
+import notificationRoutes from "./routes/notifications.js";
 import attendanceRoutes from "./routes/attendance.js";
 import myRequest from "./routes/role-requests.js";
 import { authMiddleware } from "./middleware/authMiddleware.js";
@@ -51,7 +52,7 @@ app.use("/dashboard/announcements", announcementRoutes);
 app.use("/dashboard/upcoming-birthdays", upcomingBirthdays);
 app.use("/dashboard/my-birthday", authMiddleware, myBirthdayRoutes);
 app.use("/dashboard/todays-birthdays", todaysBirthdayRoutes);
-
+app.use("/notifications", notificationRoutes);
 /* ------------------ Authenticated routes ------------------ */
 app.use("/profile", authMiddleware, profileRoutes);
 app.use("/membership-requests", authMiddleware, membershipRoutes);
