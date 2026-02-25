@@ -40,7 +40,7 @@ router.get("/", async (req, res) => {
 router.get("/unread-count", async (req, res) => {
   const supabase = req.supabase;
   const profileId = req.user.id;
-
+  console.log("USER:", req.user);
   const { count, error } = await supabase
     .from("notifications")
     .select("*", { count: "exact", head: true })
