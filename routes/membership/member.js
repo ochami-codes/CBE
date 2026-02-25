@@ -7,9 +7,9 @@ const router = express.Router();
 ===================================================== */
 router.post("/", async (req, res) => {
   const supabase = req.supabase;
-
+  const { churchId } = req.body;
   const { data, error } = await supabase.rpc(
-    "create_membership_request"
+    "create_membership_request", { p_church_id: churchId }
   );
 
   if (error) {
