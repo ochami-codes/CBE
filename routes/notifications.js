@@ -16,7 +16,7 @@ router.get("/", async (req, res) => {
   const { data, error, count } = await supabase
     .from("notifications")
     .select("*", { count: "exact" })
-    .eq("profile_id", profileId)
+    .eq("user_id", profileId)
     .order("created_at", { ascending: false })
     .range(offset, offset + limit - 1);
 
@@ -44,7 +44,7 @@ router.get("/unread-count", async (req, res) => {
   const { count, error } = await supabase
     .from("notifications")
     .select("*", { count: "exact", head: true })
-    .eq("profile_id", profileId)
+    .eq("user_id", profileId)
     .eq("is_read", false);
 
   if (error) {
@@ -68,7 +68,7 @@ router.patch("/:id/read", async (req, res) => {
     .from("notifications")
     .update({ is_read: true })
     .eq("id", id)
-    .eq("profile_id", profileId);
+    .eq("user_id", profileId);
 
   if (error) {
     console.error(error);
@@ -89,7 +89,7 @@ router.patch("/read-all", async (req, res) => {
   const { error } = await supabase
     .from("notifications")
     .update({ is_read: true })
-    .eq("profile_id", profileId)
+    .eq("user_id", profileId)
     .eq("is_read", false);
 
   if (error) {
