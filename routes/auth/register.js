@@ -3,9 +3,9 @@ import { supabaseAuth, supabaseAdmin } from "../../supabaseClient.js";
 
 const router = express.Router();
 
-/* -----------------------------
+/* =====================================================
    Helpers
------------------------------ */
+===================================================== */
 
 const sanitizeChurchBaseName = (name) =>
   name
@@ -34,9 +34,9 @@ const normalizeKenyanPhone = (phone) => {
   return p;
 };
 
-/* -----------------------------
-   REGISTER ROUTE
------------------------------ */
+/* =====================================================
+   REGISTER ROUTE (CLEAN VERSION)
+===================================================== */
 
 router.post("/", async (req, res) => {
   try {
@@ -93,16 +93,18 @@ router.post("/", async (req, res) => {
       });
     }
 
-    /* ---------- Find or Create Church (Scoped to Conference) ---------- */
+    /* ---------- Find or Create Church ---------- */
 
     let church;
 
-    const { data: existingChurch } = await supabaseAdmin
+    const churchQuery = supabaseAdmin
       .from("churches")
       .select("*")
       .eq("church_code", churchCode)
       .eq("conference_id", conference_id)
       .maybeSingle();
+
+    const { data: existingChurch } = await churchQuery;
 
     if (existingChurch) {
       church = existingChurch;
@@ -119,7 +121,6 @@ router.post("/", async (req, res) => {
           .single();
 
       if (churchInsertError) {
-        // Handle race condition safely
         if (churchInsertError.code === "23505") {
           const { data: retryChurch } = await supabaseAdmin
             .from("churches")
@@ -135,7 +136,7 @@ router.post("/", async (req, res) => {
       } else {
         church = newChurch;
 
-        /* Seed Departments (Only On First Creation) */
+        /* Seed departments only once */
         const departments = [
           { name: "Children", code: "children" },
           { name: "Youth", code: "youth" },
@@ -153,7 +154,7 @@ router.post("/", async (req, res) => {
       }
     }
 
-    /* ---------- Determine First Approved Member ---------- */
+    /* ---------- Determine First Active Member ---------- */
 
     const { data: approvedMembers } = await supabaseAdmin
       .from("members")
@@ -208,9 +209,10 @@ router.post("/", async (req, res) => {
 
     const userId = authData.user.id;
 
-    /* ---------- Wait for Profile Trigger ---------- */
+    /* ---------- Wait for Profile Trigger Sync ---------- */
 
     let profile;
+
     for (let i = 0; i < 5; i++) {
       const { data } = await supabaseAdmin
         .from("profiles")
@@ -243,28 +245,20 @@ router.post("/", async (req, res) => {
         conference_id,
         church_id: church.id,
         role_id: roleId,
-        is_member: isFirstUser, // true only for first user
+        is_member: isFirstUser,
       })
       .eq("id", userId);
 
     if (profileUpdateError) throw profileUpdateError;
 
-    /* ---------- Membership Logic ---------- */
+    /* ---------- Bootstrap First Admin Member Record ---------- */
 
     if (isFirstUser) {
-      // Auto-approve first user
       await supabaseAdmin.from("members").insert({
         profile_id: userId,
         church_id: church.id,
         role_name: "Admin",
         active: true,
-      });
-    } else {
-      // Everyone else starts as pending
-      await supabaseAdmin.from("membership_requests").insert({
-        profile_id: userId,
-        church_id: church.id,
-        status: "pending",
       });
     }
 
@@ -275,6 +269,7 @@ router.post("/", async (req, res) => {
     });
   } catch (err) {
     console.error("Registration error:", err);
+
     return res.status(500).json({
       message: err.message || "Registration failed",
     });

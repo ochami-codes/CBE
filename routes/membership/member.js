@@ -1,10 +1,10 @@
 import express from "express";
 const router = express.Router();
 
-/* -------------------------
+/* =====================================================
    POST /membership-requests
    Logged-in user requests membership
-------------------------- */
+===================================================== */
 router.post("/", async (req, res) => {
   const supabase = req.supabase;
   const { id: profileId, is_member } = req.user;
@@ -13,64 +13,101 @@ router.post("/", async (req, res) => {
     return res.status(400).json({ message: "Already a member" });
   }
 
-  // Fetch latest church
+  // Fetch user's selected church
   const { data: profile, error: profileError } = await supabase
     .from("profiles")
     .select("church_id")
     .eq("id", profileId)
     .single();
 
-  if (profileError) {
-    console.error(profileError);
-    return res.status(500).json({ message: "Failed to verify profile" });
-  }
-
-  if (!profile?.church_id) {
+  if (profileError || !profile?.church_id) {
     return res.status(400).json({ message: "Church not selected" });
   }
 
-  const church_id = profile.church_id;
+  const churchId = profile.church_id;
 
-  // Prevent duplicate pending request
-  const { data: existing, error: existingError } = await supabase
+  /* ---- Check Existing Request ---- */
+  const { data: existing } = await supabase
     .from("membership_requests")
-    .select("id")
+    .select("id, membership_request_status")
     .eq("profile_id", profileId)
-    .eq("membership_request_status", "pending")
+    .eq("church_id", churchId)
     .maybeSingle();
 
-  if (existingError) {
-    console.error(existingError);
-    return res.status(500).json({ message: "Failed to check existing requests" });
-  }
+  let requestId;
 
   if (existing) {
-    return res.status(400).json({ message: "Request already pending" });
+    if (["requested", "invited"].includes(existing.membership_request_status)) {
+      return res.status(400).json({
+        message: "Membership request already active"
+      });
+    }
+
+    if (existing.membership_request_status === "rejected") {
+      const { error } = await supabase
+        .from("membership_requests")
+        .update({
+          membership_request_status: "requested",
+          membership_requested_at: new Date(),
+          membership_reviewed_at: null
+        })
+        .eq("id", existing.id);
+
+      if (error) {
+        return res.status(500).json({ message: "Failed to reactivate request" });
+      }
+
+      requestId = existing.id;
+    }
   }
 
-  // Create request
-  const { data, error } = await supabase
-    .from("membership_requests")
-    .insert({
-      profile_id: profileId,
-      church_id,
-      membership_request_status: "pending",
-    })
-    .select()
-    .single();
+  if (!existing) {
+    const { data, error } = await supabase
+      .from("membership_requests")
+      .insert({
+        profile_id: profileId,
+        church_id: churchId,
+        membership_request_status: "requested",
+        membership_requested_at: new Date()
+      })
+      .select()
+      .single();
 
-  if (error) {
-    console.error(error);
-    return res.status(500).json({ message: "Failed to submit membership request" });
+    if (error) {
+      return res.status(500).json({ message: "Failed to submit request" });
+    }
+
+    requestId = data.id;
   }
 
-  res.status(201).json({ request: data });
+  /* ---- Notify Admins ---- */
+  // Example: notify all admins in this church
+  const { data: admins } = await supabase
+    .from("profiles")
+    .select("id")
+    .eq("church_id", churchId)
+    .eq("role", "admin");
+
+  if (admins?.length) {
+    const notifications = admins.map(admin => ({
+      user_id: admin.id,
+      title: "New Membership Request",
+      message: "A user has requested to join the church.",
+      type: "membership_requested",
+      related_id: requestId,
+      is_read: false,
+      created_at: new Date()
+    }));
+
+    await supabase.from("notifications").insert(notifications);
+  }
+
+  res.status(201).json({ success: true });
 });
 
-/* -------------------------
+/* =====================================================
    GET /membership-requests/me
-   Logged-in user checks latest request status
-------------------------- */
+===================================================== */
 router.get("/me", async (req, res) => {
   const supabase = req.supabase;
   const profileId = req.user.id;
@@ -84,80 +121,96 @@ router.get("/me", async (req, res) => {
     .maybeSingle();
 
   if (error) {
-    console.error(error);
-    return res.status(500).json({ message: "Failed to load membership request" });
+    return res.status(500).json({ message: "Failed to load request" });
   }
 
   res.json({ request: data || null });
 });
-/* -------------------------
+
+/* =====================================================
    PATCH /membership-requests/:id/respond
-   User responds to an invite (accept / reject)
-------------------------- */
+   User responds to an invite
+===================================================== */
 router.patch("/:id/respond", async (req, res) => {
   const supabase = req.supabase;
   const profileId = req.user.id;
   const { id } = req.params;
-  const { action } = req.body; // "accepted" | "rejected"
+  const { action } = req.body; // accepted | rejected
 
   if (!["accepted", "rejected"].includes(action)) {
     return res.status(400).json({ message: "Invalid action" });
   }
 
-  // Fetch the membership request
-  const { data: requestData, error: fetchError } = await supabase
+  const { data: requestData } = await supabase
     .from("membership_requests")
     .select("*")
     .eq("id", id)
     .single();
 
-  if (fetchError || !requestData) {
-    console.error(fetchError);
-    return res.status(404).json({ message: "Membership request not found" });
+  if (!requestData || requestData.profile_id !== profileId) {
+    return res.status(404).json({ message: "Request not found" });
   }
 
-  // Ensure the invite belongs to this user
-  if (requestData.profile_id !== profileId) {
-    return res.status(403).json({ message: "Not authorized" });
-  }
-
-  // Ensure it is still pending
-  if (requestData.membership_request_status !== "pending") {
+  // Only invited requests can be responded to
+  if (requestData.membership_request_status !== "invited") {
     return res.status(400).json({ message: "Request already handled" });
   }
 
-  // Update membership request status
-  const { error: updateError } = await supabase
+  /* ---- Update Request ---- */
+  const { error } = await supabase
     .from("membership_requests")
     .update({
       membership_request_status: action,
-      membership_reviewed_at: new Date(),
+      membership_reviewed_at: new Date()
     })
     .eq("id", id);
 
-  if (updateError) {
-    console.error(updateError);
+  if (error) {
     return res.status(500).json({ message: "Failed to update request" });
   }
 
-  // If accepted → update profile to member
+  /* ---- If accepted → add member ---- */
   if (action === "accepted") {
-    const { error: profileError } = await supabase
+    await supabase.from("members").insert({
+      profile_id: profileId,
+      church_id: requestData.church_id
+    });
+
+    await supabase
       .from("profiles")
       .update({ is_member: true })
       .eq("id", profileId);
-
-    if (profileError) {
-      console.error(profileError);
-      return res.status(500).json({ message: "Failed to update membership" });
-    }
   }
-// mark related notification as read
-await supabase
-  .from("notifications")
-  .update({ is_read: true })
-  .eq("related_id", id)
-  .eq("profile_id", profileId);
+
+  /* ---- Mark Invite Notification Read ---- */
+  await supabase
+    .from("notifications")
+    .update({ is_read: true })
+    .eq("related_id", id)
+    .eq("user_id", profileId);
+
+  /* ---- Notify Admins of Response ---- */
+  const { data: admins } = await supabase
+    .from("profiles")
+    .select("id")
+    .eq("church_id", requestData.church_id)
+    .eq("role", "admin");
+
+  if (admins?.length) {
+    const notifications = admins.map(admin => ({
+      user_id: admin.id,
+      title: "Invite Response",
+      message: `User has ${action} the church invitation.`,
+      type: "membership_response",
+      related_id: id,
+      is_read: false,
+      created_at: new Date()
+    }));
+
+    await supabase.from("notifications").insert(notifications);
+  }
+
   res.json({ success: true });
 });
+
 export default router;
