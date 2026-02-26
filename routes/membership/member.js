@@ -7,14 +7,21 @@ const router = express.Router();
 ===================================================== */
 router.post("/", async (req, res) => {
   const supabase = req.supabase;
+
+  const userId = req.user.id; // from your auth middleware
   const { churchId } = req.body;
+
   const { data, error } = await supabase.rpc(
-    "create_membership_request", { p_church_id: churchId }
+    "create_membership_request",
+    {
+      p_profile_id: userId,
+      p_church_id: churchId,
+    }
   );
 
   if (error) {
     return res.status(400).json({
-      message: error.message
+      message: error.message,
     });
   }
 
