@@ -14,8 +14,8 @@ router.post("/", async (req, res) => {
   const { data, error } = await supabase.rpc(
     "create_membership_request",
     {
-      p_church_id: churchId,
-      p_profile_id: userId,
+      church_id: churchId,
+      profile_id: userId,
     }
   );
 
