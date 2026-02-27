@@ -52,7 +52,7 @@ app.use("/dashboard/announcements", announcementRoutes);
 app.use("/dashboard/upcoming-birthdays", upcomingBirthdays);
 app.use("/dashboard/my-birthday", authMiddleware, myBirthdayRoutes);
 app.use("/dashboard/todays-birthdays", todaysBirthdayRoutes);
-app.use("/notifications", notificationRoutes);
+app.use("/notifications", authMiddleware, notificationRoutes);
 /* ------------------ Authenticated routes ------------------ */
 app.use("/profile", authMiddleware, profileRoutes);
 app.use("/membership-requests", authMiddleware, membershipRoutes);
