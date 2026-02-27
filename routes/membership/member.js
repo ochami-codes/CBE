@@ -19,12 +19,10 @@ router.post("/", async (req, res) => {
     }
   );
 
-  if (error) {
-    return res.status(400).json({
-      message: error.message,
-    });
-  }
-
+if (error) {
+  console.log("RPC ERROR:", error);
+  return res.status(400).json(error);
+}
   res.status(201).json(data);
 });
 /* =====================================================
