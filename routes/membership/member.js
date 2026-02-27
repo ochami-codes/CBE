@@ -9,16 +9,26 @@ router.post("/", async (req, res) => {
   const supabase = req.supabase;
 
   const userId = req.user.id; // from your auth middleware
-  const { churchId } = req.body;
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("church_id")
+    .eq("id", userId)
+    .single();
+
+  if (!profile?.church_id) {
+    return res.status(400).json({
+      message: "Church not selected",
+    });
+  }
   console.log({
-  churchId,
+  profile.church_id,
   userId
 });
   const { data, error } = await supabase.rpc(
     "create_membership_request",
     {
       p_church_id: churchId,
-      p_profile_id: userId,
+      p_profile_id: profile.church_id,
     }
   );
 
