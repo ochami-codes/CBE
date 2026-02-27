@@ -14,8 +14,8 @@ router.post("/", async (req, res) => {
   const { data, error } = await supabase.rpc(
     "create_membership_request",
     {
-      p_profile_id: userId,
       p_church_id: churchId,
+      p_profile_id: userId,
     }
   );
 
@@ -64,10 +64,9 @@ router.patch("/:id/respond", async (req, res) => {
   );
 
   if (error) {
-    return res.status(400).json({
-      message: error.message
-    });
-  }
+  console.log("RPC ERROR:", error);
+  return res.status(400).json(error);
+}
 
   res.json(data);
 });
