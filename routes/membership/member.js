@@ -10,7 +10,10 @@ router.post("/", async (req, res) => {
 
   const userId = req.user.id; // from your auth middleware
   const { churchId } = req.body;
-
+  console.log({
+  churchId,
+  userId
+});
   const { data, error } = await supabase.rpc(
     "create_membership_request",
     {
