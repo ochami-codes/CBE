@@ -6,37 +6,44 @@ const router = express.Router();
    Logged-in user requests membership
 ===================================================== */
 router.post("/", async (req, res) => {
-  const supabase = req.supabase;
+  try {
+    const supabase = req.supabase;
+    const userId = req.user.id;
 
-  const userId = req.user.id; // from your auth middleware
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("church_id")
-    .eq("id", userId)
-    .single();
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("church_id")
+      .eq("id", userId)
+      .single();
 
-  if (!profile?.church_id) {
-    return res.status(400).json({
-      message: "Church not selected",
+    if (!profile?.church_id) {
+      return res.status(400).json({
+        message: "Church not selected",
+      });
+    }
+
+    console.log({
+      church_id: profile.church_id,
+      userId
+    });
+
+    const { data, error } = await supabase.rpc(
+      "create_membership_request",
+      {
+        p_profile_id: userId,
+        p_church_id: profile.church_id,
+      }
+    );
+
+    if (error) throw error;
+
+    res.status(201).json(data);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({
+      message: err.message || "Request failed"
     });
   }
-  console.log({
-  profile.church_id,
-  userId
-});
-  const { data, error } = await supabase.rpc(
-    "create_membership_request",
-    {
-      p_church_id: churchId,
-      p_profile_id: profile.church_id,
-    }
-  );
-
-if (error) {
-  console.log("RPC ERROR:", error);
-  return res.status(400).json(error);
-}
-  res.status(201).json(data);
 });
 /* =====================================================
    GET /membership-requests/me
