@@ -71,24 +71,47 @@ router.get("/me", async (req, res) => {
    User responds to an invite
 ===================================================== */
 router.patch("/:id/respond", async (req, res) => {
-  const supabase = req.supabase;
-  const { id } = req.params;
-  const { action } = req.body;
-  const userId = req.user.id;
-  const { data, error } = await supabase.rpc(
-    "respond_to_membership_invite",
-    {
-      p_request_id: id,
-      p_action: action,
-      p_profile_id: userId,
+  try {
+    const supabase = req.supabase;
+    const userId = req.user?.id;
+
+    if (!userId) {
+      return res.status(401).json({ message: "Not authenticated" });
     }
-  );
 
-  if (error) {
-  console.log("RPC ERROR:", error);
-  return res.status(400).json(error);
-}
+    const { id } = req.params;
+    const { action } = req.body;
 
-  res.json(data);
+    const { data, error } = await supabase.rpc(
+      "respond_to_membership_invite",
+      {
+        p_request_id: id,
+        p_action: action,
+        p_profile_id: userId,
+      }
+    );
+
+    if (error) {
+      // 🔥 LOG HERE
+      console.error("Respond Invite RPC Error:", {
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        code: error.code,
+      });
+
+      return res.status(400).json({
+        message: error.message || "Failed to respond to invite",
+      });
+    }
+
+    res.json(data);
+
+  } catch (err) {
+    console.error("Server Error:", err);
+    res.status(500).json({
+      message: "Internal server error",
+    });
+  }
 });
 export default router;
