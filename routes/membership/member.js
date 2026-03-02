@@ -80,7 +80,7 @@ router.patch("/:id/respond", async (req, res) => {
     {
       p_request_id: id,
       p_action: action,
-      p_profile_id: userId;
+      p_profile_id: userId,
     }
   );
 
