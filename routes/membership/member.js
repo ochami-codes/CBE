@@ -74,12 +74,13 @@ router.patch("/:id/respond", async (req, res) => {
   const supabase = req.supabase;
   const { id } = req.params;
   const { action } = req.body;
-
+  const userId = req.user.id;
   const { data, error } = await supabase.rpc(
     "respond_to_membership_invite",
     {
       p_request_id: id,
-      p_action: action
+      p_action: action,
+      p_profile_id: userId;
     }
   );
 
