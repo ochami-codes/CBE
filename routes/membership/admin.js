@@ -29,13 +29,13 @@ router.get("/", requireChurch, async (req, res) => {
         profile_id,
         full_name,
         email,
-        status,
-        source,
+        membership_status,
+        membership_source,
         membership_requested_at
       `)
       .eq("church_id", churchId)
-      .eq("source", "user_request")
-      .eq("status", "requested")
+      .eq("membership_source", "user_request")
+      .eq("membership_status", "requested")
       .order("membership_requested_at", { ascending: false });
 
     if (error) throw error;
