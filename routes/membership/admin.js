@@ -151,8 +151,8 @@ router.get("/non-members", requireChurch, async (req, res) => {
         email,
         phone,
         is_member,
-        status,
-        source,
+        membership_status,
+        membership_source,
         membership_requested_at
       `)
       .eq("church_id", churchId)
