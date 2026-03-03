@@ -1,3 +1,4 @@
+// routes/membership/member.js
 import express from "express";
 const router = express.Router();
 
@@ -8,24 +9,30 @@ const router = express.Router();
 router.post("/", async (req, res) => {
   try {
     const supabase = req.supabase;
+
+    if (!req.user?.id) {
+      return res.status(401).json({ message: "Not authenticated" });
+    }
+
     const userId = req.user.id;
 
-    const { data: profile } = await supabase
+    // Get selected church from profile
+    const { data: profile, error: profileError } = await supabase
       .from("profiles")
       .select("church_id")
       .eq("id", userId)
       .single();
+
+    if (profileError) {
+      console.error("Profile load error:", profileError);
+      return res.status(500).json({ message: "Failed to load profile" });
+    }
 
     if (!profile?.church_id) {
       return res.status(400).json({
         message: "Church not selected",
       });
     }
-
-    console.log({
-      church_id: profile.church_id,
-      userId
-    });
 
     const { data, error } = await supabase.rpc(
       "create_membership_request",
@@ -35,52 +42,94 @@ router.post("/", async (req, res) => {
       }
     );
 
-    if (error) throw error;
+    if (error) {
+      console.error("Create membership request RPC error:", error);
+      return res.status(400).json({
+        message: error.message || "Request failed",
+      });
+    }
 
     res.status(201).json(data);
+
   } catch (err) {
-    console.error(err);
+    console.error("Server Error:", err);
     res.status(500).json({
-      message: err.message || "Request failed"
+      message: "Internal server error",
     });
   }
 });
+
+
 /* =====================================================
    GET /membership-requests/me
+   Get latest membership workflow for logged-in user
 ===================================================== */
 router.get("/me", async (req, res) => {
-  const supabase = req.supabase;
-  const profileId = req.user.id;
+  try {
+    const supabase = req.supabase;
 
-  const { data, error } = await supabase
-    .from("membership_requests")
-    .select("id, membership_request_status, membership_requested_at, membership_reviewed_at")
-    .eq("profile_id", profileId)
-    .order("membership_requested_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+    if (!req.user?.id) {
+      return res.status(401).json({ message: "Not authenticated" });
+    }
 
-  if (error) {
-    return res.status(500).json({ message: "Failed to load request" });
+    const profileId = req.user.id;
+
+    const { data, error } = await supabase
+      .from("membership_requests")
+      .select(`
+        id,
+        source,
+        status,
+        membership_requested_at,
+        membership_responded_at,
+        acted_by
+      `)
+      .eq("profile_id", profileId)
+      .order("membership_requested_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (error) {
+      console.error("Load membership request error:", error);
+      return res.status(500).json({
+        message: "Failed to load membership request",
+      });
+    }
+
+    res.json({ request: data || null });
+
+  } catch (err) {
+    console.error("Server Error:", err);
+    res.status(500).json({
+      message: "Internal server error",
+    });
   }
-
-  res.json({ request: data || null });
 });
+
+
 /* =====================================================
    PATCH /membership-requests/:id/respond
-   User responds to an invite
+   User responds to an admin invite
+   (accepted | rejected)
 ===================================================== */
 router.patch("/:id/respond", async (req, res) => {
   try {
     const supabase = req.supabase;
-    const userId = req.user?.id;
 
-    if (!userId) {
+    if (!req.user?.id) {
       return res.status(401).json({ message: "Not authenticated" });
     }
 
+    const userId = req.user.id;
     const { id } = req.params;
     const { action } = req.body;
+
+    // Early validation
+    if (!["accepted", "rejected"].includes(action)) {
+      return res.status(400).json({
+        message: "Invalid action",
+      });
+    }
 
     const { data, error } = await supabase.rpc(
       "respond_to_membership_invite",
@@ -92,12 +141,11 @@ router.patch("/:id/respond", async (req, res) => {
     );
 
     if (error) {
-      // 🔥 LOG HERE
-      console.error("Respond Invite RPC Error:", {
+      console.error("Respond invite RPC error:", {
         message: error.message,
+        code: error.code,
         details: error.details,
         hint: error.hint,
-        code: error.code,
       });
 
       return res.status(400).json({
@@ -114,4 +162,6 @@ router.patch("/:id/respond", async (req, res) => {
     });
   }
 });
+
+
 export default router;

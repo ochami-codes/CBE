@@ -7,7 +7,7 @@ const router = express.Router();
    Middleware — Ensure Church Context Exists
 ===================================================== */
 const requireChurch = (req, res, next) => {
-  if (!req.user?.church_id) {
+  if (!req.user?.church_id || !req.user?.id) {
     return res.status(400).json({
       message: "Church context missing"
     });
@@ -16,7 +16,7 @@ const requireChurch = (req, res, next) => {
 };
 
 /* =====================================================
-   GET Active Membership Requests (requested only)
+   GET Active Membership Requests (User Requests Only)
 ===================================================== */
 router.get("/", requireChurch, async (req, res) => {
   try {
@@ -29,11 +29,13 @@ router.get("/", requireChurch, async (req, res) => {
         profile_id,
         full_name,
         email,
-        membership_request_status,
+        status,
+        source,
         membership_requested_at
       `)
       .eq("church_id", churchId)
-      .eq("membership_request_status", "requested")
+      .eq("source", "user_request")
+      .eq("status", "requested")
       .order("membership_requested_at", { ascending: false });
 
     if (error) throw error;
@@ -49,29 +51,21 @@ router.get("/", requireChurch, async (req, res) => {
 });
 
 /* =====================================================
-   Approve Membership
+   Approve Membership (Admin Reviews User Request)
 ===================================================== */
 router.post("/:id/approve", requireChurch, async (req, res) => {
   try {
-    const churchId = req.user.church_id;
     const requestId = req.params.id;
 
-    const { data: requestData, error: fetchError } = await supabaseAdmin
-      .from("membership_requests")
-      .select("profile_id")
-      .eq("id", requestId)
-      .eq("church_id", churchId)
-      .single();
-
-    if (fetchError || !requestData) {
-      return res.status(404).json({ message: "Request not found" });
-    }
-
-    /* ---- RPC (handles member insert + status update) ---- */
-    const { error } = await supabaseAdmin.rpc("approve_membership", {
-      request_id: requestId,
-      approver_church_id: churchId
-    });
+    const { error } = await supabaseAdmin.rpc(
+      "admin_review_membership_request",
+      {
+        p_request_id: requestId,
+        p_action: "approved",
+        p_admin_profile_id: req.user.id,
+        p_church_id: req.user.church_id
+      }
+    );
 
     if (error) throw error;
 
@@ -86,49 +80,30 @@ router.post("/:id/approve", requireChurch, async (req, res) => {
 });
 
 /* =====================================================
-   Reject Membership
+   Reject Membership (Admin Reviews User Request)
 ===================================================== */
 router.post("/:id/reject", requireChurch, async (req, res) => {
   try {
-    const churchId = req.user.church_id;
     const requestId = req.params.id;
 
-    const { data, error } = await supabaseAdmin
-      .from("membership_requests")
-      .update({
-        membership_request_status: "rejected",
-        membership_reviewed_at: new Date()
-      })
-      .eq("id", requestId)
-      .eq("church_id", churchId)
-      .in("membership_request_status", ["requested", "invited"])
-      .select()
-      .single();
+    const { error } = await supabaseAdmin.rpc(
+      "admin_review_membership_request",
+      {
+        p_request_id: requestId,
+        p_action: "rejected",
+        p_admin_profile_id: req.user.id,
+        p_church_id: req.user.church_id
+      }
+    );
 
-    if (error || !data) {
-      return res.status(404).json({
-        message: "Request not found or already processed"
-      });
-    }
-
-    /* ---- Notify User ---- */
-    await supabaseAdmin.from("notifications").insert({
-      user_id: data.profile_id,
-      church_id: churchId,
-      title: "Membership Rejected",
-      message: "Your membership request was not approved.",
-      type: "membership_rejected",
-      related_id: requestId,
-      is_read: false,
-      created_at: new Date()
-    });
+    if (error) throw error;
 
     res.json({ success: true });
 
   } catch (err) {
     console.error("Reject membership error:", err);
-    res.status(500).json({
-      message: "Failed to reject membership"
+    res.status(400).json({
+      message: err.message || "Rejection failed"
     });
   }
 });
@@ -138,17 +113,20 @@ router.post("/:id/reject", requireChurch, async (req, res) => {
 ===================================================== */
 router.post("/invite/:id", requireChurch, async (req, res) => {
   try {
-    const churchId = req.user.church_id;
     const profileId = req.params.id;
 
     const { data, error } = await supabaseAdmin.rpc("invite_member", {
       p_profile_id: profileId,
-      p_church_id: churchId
+      p_church_id: req.user.church_id,
+      p_admin_profile_id: req.user.id
     });
 
     if (error) throw error;
 
-    res.status(201).json({ success: true, requestId: data });
+    res.status(201).json({
+      success: true,
+      requestId: data
+    });
 
   } catch (err) {
     console.error("Invite error:", err);
@@ -157,6 +135,7 @@ router.post("/invite/:id", requireChurch, async (req, res) => {
     });
   }
 });
+
 /* =====================================================
    Fetch Non-Members
 ===================================================== */
@@ -172,7 +151,8 @@ router.get("/non-members", requireChurch, async (req, res) => {
         email,
         phone,
         is_member,
-        membership_request_status,
+        status,
+        source,
         membership_requested_at
       `)
       .eq("church_id", churchId)
