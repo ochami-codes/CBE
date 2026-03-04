@@ -114,10 +114,12 @@ router.get("/", async (req, res) => {
  */
 router.put("/:id", requireRole(["Admin"]), async (req, res) => {
   const supabase = req.supabase;
-  const { id } = req.params; // member.id
-  const { department, role_name, active } = req.body;
+  const { id } = req.params;
+  const updates = req.body.updates || {};
   const { church_id } = req.user;
-  console.log("Incoming body:", req.body);
+
+  const { department, role_name, active } = updates;
+
   if (!department && !role_name && active === undefined) {
     return res.status(400).json({ message: "Nothing to update" });
   }
@@ -137,13 +139,17 @@ router.put("/:id", requireRole(["Admin"]), async (req, res) => {
 
     if (error) throw error;
 
-    return res.json({ message: "Member updated successfully", member: data });
+    return res.json({
+      message: "Member updated successfully",
+      member: data,
+    });
   } catch (err) {
     console.error("Update member error:", err);
-    return res.status(500).json({ message: "Failed to update member" });
+    return res.status(500).json({
+      message: err.message || "Failed to update member",
+    });
   }
 });
-
 /**
  * DELETE MEMBER
  */
