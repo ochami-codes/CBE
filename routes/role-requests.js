@@ -11,21 +11,12 @@ const ALLOWED_ROLES = [
   "Communication_leader",
 ];
 
-/**
- * POST /role-requests
- * Member submits a role request
- */
 router.post("/", async (req, res) => {
   const supabase = req.supabase;
   const { requested_role } = req.body;
 
-  const {
-    id: member_id,
-    church_id,
-    is_member,
-  } = req.user;
+  const { id: member_id, church_id, is_member } = req.user;
 
-  // 🚫 Guests cannot request roles
   if (!is_member) {
     return res.status(403).json({
       error: "Only members can request roles",
@@ -51,44 +42,23 @@ router.post("/", async (req, res) => {
   }
 
   try {
-    // 🚫 Prevent duplicate pending request for same role
-    const { data: existing } = await supabase
-      .from("role_requests")
-      .select("id")
-      .eq("member_id", member_id)
-      .eq("requested_role", requested_role)
-      .eq("role_request_status", "pending")
-      .maybeSingle();
-
-    if (existing) {
-      return res.status(400).json({
-        error: "You already have a pending request for this role",
-      });
-    }
-
-    const { data, error } = await supabase
-      .from("role_requests")
-      .insert({
-        member_id,
-        role_requested_by: member_id,
-        requested_role,
-        church_id,
-        role_request_status: "pending",
-      })
-      .select()
-      .single();
+    const { data, error } = await supabase.rpc("submit_role_request", {
+      p_member_id: member_id,
+      p_requested_role: requested_role,
+      p_church_id: church_id,
+    });
 
     if (error) throw error;
 
-    res.status(201).json({ request: data });
+    res.status(201).json(data);
   } catch (err) {
-    console.error("Submit role request error:", err);
-    res.status(500).json({
-      error: "Failed to submit role request",
+    console.error("Submit role request RPC error:", err);
+
+    res.status(400).json({
+      error: err.message || "Failed to submit role request",
     });
   }
 });
-
 /**
  * GET /role-requests/my-requests
  * Fetch logged-in member's role requests

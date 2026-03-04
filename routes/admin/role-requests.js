@@ -46,76 +46,51 @@ router.get("/", requireAdmin, async (req, res) => {
 /**
  * POST /admin/role-requests/:id/approve
  */
-router.post(
-  "/:id/approve",
-  
-  requireAdmin,
-  async (req, res) => {
-    const supabase = req.supabase;
-    const { id } = req.params;
+router.post("/:id/approve", requireAdmin, async (req, res) => {
+  const supabase = req.supabase;
+  const { id } = req.params;
+  const adminId = req.user.id;
 
-    try {
-      // 1️⃣ Load the request
-      const { data: request, error } = await supabase
-        .from("role_requests")
-        .select("id, requested_role, member_id, church_id")
-        .eq("id", id)
-        .single();
+  try {
+    const { data, error } = await supabase.rpc("handle_role_request", {
+      p_request_id: id,
+      p_action: "approved",
+      p_admin_id: adminId,
+    });
 
-      if (error || !request) {
-        return res.status(404).json({ error: "Role request not found" });
-      }
+    if (error) throw error;
 
-      // 2️⃣ Update member role
-      const { error: memberError } = await supabase
-        .from("members")
-        .update({ role_name: request.requested_role })
-        .eq("id", request.member_id)
-        .eq("church_id", request.church_id);
-
-      if (memberError) throw memberError;
-
-      // 3️⃣ Mark request approved
-      const { error: requestError } = await supabase
-        .from("role_requests")
-        .update({ role_request_status: "approved" })
-        .eq("id", id);
-
-      if (requestError) throw requestError;
-
-      res.json({ message: "Role request approved" });
-    } catch (err) {
-      console.error("Approve role request error:", err);
-      res.status(500).json({ error: "Failed to approve role request" });
-    }
+    res.json(data);
+  } catch (err) {
+    console.error("Approve role request RPC error:", err);
+    res.status(400).json({
+      error: err.message || "Failed to approve role request",
+    });
   }
-);
-
+});
 /**
  * POST /admin/role-requests/:id/reject
  */
-router.post(
-  "/:id/reject",
-  
-  requireAdmin,
-  async (req, res) => {
-    const supabase = req.supabase;
-    const { id } = req.params;
+router.post("/:id/reject", requireAdmin, async (req, res) => {
+  const supabase = req.supabase;
+  const { id } = req.params;
+  const adminId = req.user.id;
 
-    try {
-      const { error } = await supabase
-        .from("role_requests")
-        .update({ role_request_status: "rejected" })
-        .eq("id", id);
+  try {
+    const { data, error } = await supabase.rpc("handle_role_request", {
+      p_request_id: id,
+      p_action: "rejected",
+      p_admin_id: adminId,
+    });
 
-      if (error) throw error;
+    if (error) throw error;
 
-      res.json({ message: "Role request rejected" });
-    } catch (err) {
-      console.error("Reject role request error:", err);
-      res.status(500).json({ error: "Failed to reject role request" });
-    }
+    res.json(data);
+  } catch (err) {
+    console.error("Reject role request RPC error:", err);
+    res.status(400).json({
+      error: err.message || "Failed to reject role request",
+    });
   }
-);
-
+});
 export default router;
