@@ -117,7 +117,7 @@ router.put("/:id", requireRole(["Admin"]), async (req, res) => {
   const { id } = req.params; // member.id
   const { department, role_name, active } = req.body;
   const { church_id } = req.user;
-
+  console.log("Incoming body:", req.body);
   if (!department && !role_name && active === undefined) {
     return res.status(400).json({ message: "Nothing to update" });
   }
@@ -163,9 +163,12 @@ router.delete("/:id", requireRole(["Admin"]), async (req, res) => {
 
     return res.json({ message: "Member removed successfully" });
   } catch (err) {
-    console.error("Delete member error:", err);
-    return res.status(500).json({ message: "Failed to remove member" });
-  }
+  console.error("Update member error FULL:", err);
+  return res.status(500).json({ 
+    message: "Failed to update member",
+    error: err.message 
+  });
+}
 });
 
 export default router;
