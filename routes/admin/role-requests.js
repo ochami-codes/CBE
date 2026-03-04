@@ -13,36 +13,53 @@ router.get("/", requireAdmin, async (req, res) => {
 
   try {
     const { data, error } = await supabase
-      .from("role_requests")
+      .from("member_full_dashboard")
       .select(`
-        id,
+        role_request_id,
         requested_role,
         role_request_status,
         role_requested_at,
-        requester:profiles!role_requests_requested_by_fkey(
-          id,
-          full_name,
-          email
-        ),
-        member:profiles!role_requests_member_id_fkey(
-          id,
-          full_name,
-          email
-        )
+        full_name,
+        email,
+        role_name,
+        role_requested_by_id,
+        role_requested_by_name,
+        role_requested_by_email
       `)
       .eq("church_id", churchId)
       .eq("role_request_status", "pending")
+      .not("role_request_id", "is", null)
       .order("role_requested_at", { ascending: false });
 
     if (error) throw error;
 
-    res.json({ requests: data ?? [] });
+    /* Optional: Shape response for cleaner frontend */
+    const shaped = (data || []).map(r => ({
+      id: r.role_request_id,
+      requested_role: r.requested_role,
+      role_request_status: r.role_request_status,
+      role_requested_at: r.role_requested_at,
+
+      target_user: {
+        full_name: r.full_name,
+        email: r.email,
+        role: r.role_name,
+      },
+
+      requester: {
+        id: r.role_requested_by_id,
+        full_name: r.role_requested_by_name,
+        email: r.role_requested_by_email,
+      },
+    }));
+
+    res.json({ requests: shaped });
+
   } catch (err) {
     console.error("Fetch role requests error:", err);
     res.status(500).json({ error: "Failed to load role requests" });
   }
 });
-
 /**
  * POST /admin/role-requests/:id/approve
  */
