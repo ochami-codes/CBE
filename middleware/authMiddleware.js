@@ -43,8 +43,9 @@ export async function authMiddleware(req, res, next) {
 
     const { data: member } = await supabaseAdmin
       .from("members")
-      .select("role_name, active")
+      .select("id, role_name, active")
       .eq("profile_id", authUser.id)
+      .eq("church_id", profile.church_id)
       .maybeSingle();
 
     /* ---------- Block Deactivated Accounts ---------- */
@@ -56,7 +57,8 @@ export async function authMiddleware(req, res, next) {
     const isMember = profile.is_member === true;
 
     req.user = {
-      id: profile.id,
+      id: profile.id,       // auth identity
+      member_id: member?.id ?? null, // church identity
       email: profile.email ?? authUser.email,
       full_name: profile.full_name || "Guest",
       role_name: isMember ? member?.role_name || "Member" : "Guest",
