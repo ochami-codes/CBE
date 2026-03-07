@@ -15,11 +15,17 @@ router.post("/", async (req, res) => {
   const supabase = req.supabase;
   const { requested_role } = req.body;
 
-  const { id: member_id, church_id, is_member } = req.user;
+  const { member_id, church_id, is_member } = req.user;
 
   if (!is_member) {
     return res.status(403).json({
       error: "Only members can request roles",
+    });
+  }
+
+  if (!member_id) {
+    return res.status(400).json({
+      error: "Member record not found",
     });
   }
 
