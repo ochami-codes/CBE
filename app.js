@@ -49,9 +49,9 @@ app.use("/conferences", conferenceRoutes);
 /* ------------------ Dashboard routes (auth optional inside route) ------------------ */
 app.use("/dashboard/daily-verse", verseRoutes);
 app.use("/dashboard/announcements", announcementRoutes);
-app.use("/dashboard/upcoming-birthdays", upcomingBirthdays);
+app.use("/dashboard/upcoming-birthdays",authMiddleware, upcomingBirthdays);
 app.use("/dashboard/my-birthday", authMiddleware, myBirthdayRoutes);
-app.use("/dashboard/todays-birthdays", todaysBirthdayRoutes);
+app.use("/dashboard/todays-birthdays", authMiddleware, todaysBirthdayRoutes);
 app.use("/notifications", authMiddleware, notificationRoutes);
 /* ------------------ Authenticated routes ------------------ */
 app.use("/profile", authMiddleware, profileRoutes);
