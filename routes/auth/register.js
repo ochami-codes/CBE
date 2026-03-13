@@ -35,7 +35,7 @@ const normalizeKenyanPhone = (phone) => {
 };
 
 /* =====================================================
-   REGISTER ROUTE (CLEAN VERSION)
+   REGISTER
 ===================================================== */
 
 router.post("/", async (req, res) => {
@@ -50,8 +50,6 @@ router.post("/", async (req, res) => {
       conference_id,
       church_name,
     } = req.body;
-
-    /* ---------- Validation ---------- */
 
     if (
       !full_name ||
@@ -74,12 +72,13 @@ router.post("/", async (req, res) => {
       });
     }
 
+    const normalizedPhone = normalizeKenyanPhone(phone);
+
+    /* ---------- Church resolution ---------- */
+
     const baseName = sanitizeChurchBaseName(church_name);
     const finalChurchName = buildFullChurchName(baseName);
     const churchCode = generateChurchCode(baseName);
-    const normalizedPhone = normalizeKenyanPhone(phone);
-
-    /* ---------- Validate Conference ---------- */
 
     const { data: conference } = await supabaseAdmin
       .from("conferences")
@@ -93,68 +92,62 @@ router.post("/", async (req, res) => {
       });
     }
 
-    /* ---------- Find or Create Church ---------- */
-
     let church;
 
-    const churchQuery = supabaseAdmin
+    const { data: existingChurch } = await supabaseAdmin
       .from("churches")
       .select("*")
       .eq("church_code", churchCode)
       .eq("conference_id", conference_id)
       .maybeSingle();
 
-    const { data: existingChurch } = await churchQuery;
-
     if (existingChurch) {
       church = existingChurch;
     } else {
-      const { data: newChurch, error: churchInsertError } =
-        await supabaseAdmin
-          .from("churches")
-          .insert({
-            name: finalChurchName,
-            church_code: churchCode,
-            conference_id,
-          })
-          .select()
-          .single();
+      const { data: newChurch, error } = await supabaseAdmin
+        .from("churches")
+        .insert({
+          name: finalChurchName,
+          church_code: churchCode,
+          conference_id,
+        })
+        .select()
+        .single();
 
-      if (churchInsertError) {
-        if (churchInsertError.code === "23505") {
-          const { data: retryChurch } = await supabaseAdmin
-            .from("churches")
-            .select("*")
-            .eq("church_code", churchCode)
-            .eq("conference_id", conference_id)
-            .single();
+      if (error) throw error;
 
-          church = retryChurch;
-        } else {
-          throw churchInsertError;
-        }
-      } else {
-        church = newChurch;
+      church = newChurch;
 
-        /* Seed departments only once */
-        const departments = [
-          { name: "Children", code: "children" },
-          { name: "Youth", code: "youth" },
-          { name: "Treasury", code: "treasury" },
-          { name: "Communication", code: "communication" },
-          { name: "Sabbath School", code: "sabbath_school" },
-        ];
+      const departments = [
+        { name: "Children", code: "children", type: "age" },
+        { name: "Youth", code: "youth", type:"age" },
+        { name: "Treasury", code: "treasury", type: "ministry" },
+        { name: "Choir", code: "choir", type: "ministry" },
+        { name: "AMO", code: "amo", type: "age" },
+        { name: "ALO", code: "alo", type: "age" },
+        { name: "Deaconry", code: "deaconry", type: "ministry" },
+        { name: "Communication", code: "communication", type: "ministry" },
+        { name: "Sabbath School", code: "sabbath_school", type: "ministry" },
+      ];
 
-        await supabaseAdmin.from("departments").insert(
-          departments.map((d) => ({
-            ...d,
-            church_id: church.id,
-          }))
-        );
-      }
+      await supabaseAdmin.from("departments").insert(
+        departments.map((d) => ({
+          ...d,
+          church_id: church.id,
+        }))
+      );
     }
 
-    /* ---------- Determine First Active Member ---------- */
+    /* ---------- Check for existing non-system member ---------- */
+
+    const { data: existingProfile } = await supabaseAdmin
+      .from("profiles")
+      .select("*")
+      .eq("church_id", church.id)
+      .eq("phone", normalizedPhone)
+      .maybeSingle();
+
+    /* ---------- Determine first church member ---------- */
 
     const { data: approvedMembers } = await supabaseAdmin
       .from("members")
@@ -164,7 +157,7 @@ router.post("/", async (req, res) => {
 
     const isFirstUser = (approvedMembers?.length || 0) === 0;
 
-    /* ---------- Fetch Roles ---------- */
+    /* ---------- Fetch roles ---------- */
 
     const { data: adminRole } = await supabaseAdmin
       .from("roles")
@@ -178,15 +171,9 @@ router.post("/", async (req, res) => {
       .eq("name", "Guest")
       .single();
 
-    if (!adminRole?.id || !guestRole?.id) {
-      return res.status(500).json({
-        message: "Role configuration error",
-      });
-    }
-
     const roleId = isFirstUser ? adminRole.id : guestRole.id;
 
-    /* ---------- Create Auth User ---------- */
+    /* ---------- Create auth user ---------- */
 
     const { data: authData, error: authError } =
       await supabaseAuth.auth.signUp({
@@ -201,7 +188,7 @@ router.post("/", async (req, res) => {
     if (authError) {
       if (authError.message?.toLowerCase().includes("already")) {
         return res.status(400).json({
-          message: "This email is already registered. Please log in.",
+          message: "Email already registered. Please login.",
         });
       }
       throw authError;
@@ -209,7 +196,7 @@ router.post("/", async (req, res) => {
 
     const userId = authData.user.id;
 
-    /* ---------- Wait for Profile Trigger Sync ---------- */
+    /* ---------- Wait for trigger profile ---------- */
 
     let profile;
 
@@ -229,12 +216,26 @@ router.post("/", async (req, res) => {
     }
 
     if (!profile) {
-      throw new Error("Profile record not found after signup");
+      throw new Error("Profile creation failed");
     }
 
-    /* ---------- Update Profile ---------- */
+    /* ---------- Merge existing non-system profile ---------- */
 
-    const { error: profileUpdateError } = await supabaseAdmin
+    if (existingProfile && existingProfile.id !== userId) {
+      await supabaseAdmin
+        .from("members")
+        .update({ id: userId })
+        .eq("id", existingProfile.id);
+
+      await supabaseAdmin
+        .from("profiles")
+        .delete()
+        .eq("id", existingProfile.id);
+    }
+
+    /* ---------- Update profile ---------- */
+
+    await supabaseAdmin
       .from("profiles")
       .update({
         full_name,
@@ -246,16 +247,15 @@ router.post("/", async (req, res) => {
         church_id: church.id,
         role_id: roleId,
         is_member: isFirstUser,
+        is_system_user: true,
       })
       .eq("id", userId);
 
-    if (profileUpdateError) throw profileUpdateError;
-
-    /* ---------- Bootstrap First Admin Member Record ---------- */
+    /* ---------- Bootstrap admin membership ---------- */
 
     if (isFirstUser) {
       await supabaseAdmin.from("members").insert({
-        profile_id: userId,
+        id: userId,
         church_id: church.id,
         role_name: "Admin",
         active: true,
@@ -265,7 +265,7 @@ router.post("/", async (req, res) => {
     return res.status(201).json({
       message: isFirstUser
         ? "Registration successful. You are the church Admin."
-        : "Registration successful. Your account is pending approval.",
+        : "Registration successful. Await approval from church leadership.",
     });
   } catch (err) {
     console.error("Registration error:", err);

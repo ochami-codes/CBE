@@ -14,16 +14,20 @@ router.get("/", async (req, res) => {
   try {
     const { data, error } = await supabase
       .from("departments")
-      .select("id, name")
+      .select("id, name, code, type")
       .eq("church_id", church_id)
-      .order("name");
+      .order("name", { ascending: true });
 
     if (error) throw error;
 
-    return res.json({ departments: data });
+    return res.json({
+      departments: data ?? [],
+    });
   } catch (err) {
     console.error("Fetch departments error:", err);
-    return res.status(500).json({ message: "Failed to fetch departments" });
+    return res.status(500).json({
+      message: "Failed to fetch departments",
+    });
   }
 });
 

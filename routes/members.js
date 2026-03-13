@@ -6,58 +6,92 @@ const router = express.Router();
 /**
  * ADD / UPSERT MEMBER
  * POST /members
- * Expects: { full_name, department (code), email?, role_name? }
+ * Expects: { full_name, department (code), phone, role_name? }
  */
 router.post(
   "/",
-  
-  requireRole(["Admin", "Pastor", "Youth_leader"]),
+  requireRole([
+    "Admin",
+    "Pastor",
+    "Youth_leader",
+    "Choir_leader",
+    "Amo_leader",
+    "Deaconry_leader",
+    "Alo_leader",
+  ]),
   async (req, res) => {
     const supabase = req.supabase;
     const { church_id } = req.user;
-    const { full_name, department, email, role_name = "Member" } = req.body;
 
-    if (!full_name || !department) {
-      return res.status(400).json({ message: "full_name and department are required" });
+    const {
+      profile_id,
+      full_name,
+      phone,
+      department,
+      role_name = "Member",
+    } = req.body;
+
+    if (!department) {
+      return res.status(400).json({ message: "Department is required" });
+    }
+
+    if (!profile_id && (!full_name || !phone)) {
+      return res.status(400).json({
+        message: "Provide profile_id OR full_name + phone",
+      });
     }
 
     try {
       /* ---------------- Resolve department ---------------- */
-      const { data: dept } = await supabase
+
+      const { data: dept, error: deptError } = await supabase
         .from("departments")
-        .select("id")
+        .select("id, type")
         .eq("church_id", church_id)
         .eq("code", department)
         .single();
 
-      if (!dept) {
+      if (deptError || !dept) {
         return res.status(400).json({ message: "Invalid department" });
       }
 
       let profileId;
 
-      /* ---------------- Resolve or create PROFILE ---------------- */
-      if (email) {
-        const { data: profile } = await supabase
+      /* ---------------- SYSTEM USER ---------------- */
+
+      if (profile_id) {
+        const { data: profile, error } = await supabase
           .from("profiles")
           .select("id")
-          .eq("email", email)
+          .eq("id", profile_id)
+          .eq("church_id", church_id)
           .single();
 
-        if (profile) {
-          profileId = profile.id;
+        if (error || !profile) {
+          return res.status(404).json({ message: "Profile not found" });
+        }
 
-          // keep profile data fresh
-          await supabase
-            .from("profiles")
-            .update({ full_name, church_id })
-            .eq("id", profileId);
+        profileId = profile.id;
+      }
+
+      /* ---------------- NON SYSTEM MEMBER ---------------- */
+
+      if (!profileId) {
+        const { data: existingProfile } = await supabase
+          .from("profiles")
+          .select("id")
+          .eq("church_id", church_id)
+          .eq("phone", phone)
+          .maybeSingle();
+
+        if (existingProfile) {
+          profileId = existingProfile.id;
         } else {
           const { data: newProfile, error } = await supabase
             .from("profiles")
             .insert({
-              email,
               full_name,
+              phone,
               church_id,
               is_system_user: false,
             })
@@ -65,44 +99,61 @@ router.post(
             .single();
 
           if (error) throw error;
+
           profileId = newProfile.id;
         }
-      } else {
-        // no email → create anonymous profile
-        const { data: newProfile, error } = await supabase
-          .from("profiles")
-          .insert({
-            full_name,
-            church_id,
-            is_system_user: false,
-          })
-          .select()
-          .single();
-
-        if (error) throw error;
-        profileId = newProfile.id;
       }
 
-      /* ---------------- Upsert MEMBER (id = profileId) ---------------- */
+      /* ---------------- PREVENT DUPLICATE SAME DEPARTMENT ---------------- */
+
+      const { data: existingMember } = await supabase
+        .from("members")
+        .select("id")
+        .eq("id", profileId)
+        .eq("department_id", dept.id)
+        .maybeSingle();
+
+      if (existingMember) {
+        return res.status(409).json({
+          message: "Member already belongs to this department",
+        });
+      }
+
+      /* ---------------- AGE DEPARTMENT CHECK ---------------- */
+
+      if (dept.type === "age") {
+        const { data: existingAgeDept } = await supabase
+          .from("members")
+          .select("departments(type)")
+          .eq("id", profileId)
+          .eq("church_id", church_id)
+          .eq("departments.type", "age");
+
+        if (existingAgeDept?.length > 0) {
+          return res.status(409).json({
+            message: "Member already belongs to another age department",
+          });
+        }
+      }
+
+      /* ---------------- CREATE MEMBER ---------------- */
+
       const { data: member, error } = await supabase
         .from("members")
-        .upsert(
-          {
-            id: profileId,
-            church_id,
-            department_id: dept.id,
-            role_name,
-            active: true,
-          },
-          { onConflict: "id" }
-        )
+        .insert({
+          id: profileId,
+          church_id,
+          department_id: dept.id,
+          role_name,
+          active: true,
+        })
         .select()
         .single();
 
       if (error) throw error;
 
       return res.status(201).json({
-        message: "Member saved successfully",
+        message: "Member added successfully",
         member,
       });
     } catch (err) {
@@ -112,67 +163,12 @@ router.post(
   }
 );
 /**
- * GET MEMBERS
- * Optional query: department (frontend code, e.g. "youth")
- */
-router.get("/", async (req, res) => {
-  const supabase = req.supabase;
-  const { church_id } = req.user;
-  const { department } = req.query;
-
-  try {
-    let query = supabase
-      .from("member_full") // view joins members + departments + profiles
-      .select("*")
-      .eq("church_id", church_id)
-      .order("created_at", { ascending: false });
-
-    if (department) {
-      const { data: dept, error: deptError } = await supabase
-        .from("departments")
-        .select("id")
-        .eq("church_id", church_id)
-        .eq("code", department)
-        .single();
-
-      if (deptError || !dept) {
-        return res.status(400).json({ message: "Invalid department" });
-      }
-
-      query = query.eq("department_id", dept.id);
-    }
-
-    const { data, error } = await query;
-    if (error) throw error;
-
-    const members = (data ?? []).map((m) => ({
-      profile_id: m.id,
-      full_name: m.full_name,
-      department: department ?? m.department_code,
-      department_name: m.department_name,
-      role_name: m.role_name,
-      active: m.active,
-      created_at: m.created_at,
-      email: m.email ?? null,
-      phone: m.phone ?? null,
-      date_of_birth: m.date_of_birth ?? null,
-      gender: m.gender ?? null,
-    }));
-
-    return res.json({ members });
-  } catch (err) {
-    console.error("Fetch members error:", err);
-    return res.status(500).json({ message: "Failed to fetch members" });
-  }
-});
-
-/**
  * UPDATE MEMBER
  */
 router.put(
   "/:id",
   
-  requireRole(["Admin", "Pastor", "Youth_leader"]),
+  requireRole(["Admin"]),
   async (req, res) => {
     const supabase = req.supabase;
     const { id } = req.params;
@@ -236,7 +232,7 @@ router.put(
 router.delete(
   "/:id",
   
-  requireRole(["Admin", "Pastor", "Youth_leader"]),
+  requireRole(["Admin", "Pastor", "Youth_leader", "Deaconry_leader", "Amo_leader", "Alo_leader", "Choir_leader"]),
   async (req, res) => {
     const supabase = req.supabase;
     const { id } = req.params;
@@ -259,4 +255,32 @@ router.delete(
   }
 );
 
+// Search profiles
+router.get("/profiles/search", async (req, res) => {
+  const supabase = req.supabase;
+  const { church_id } = req.user;
+  const { q } = req.query;
+
+  if (!q || q.length < 2) {
+    return res.json({ profiles: [] });
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("id, full_name, phone, email")
+      .eq("church_id", church_id)
+      .or(`full_name.ilike.%${q}%,phone.ilike.%${q}%,email.ilike.%${q}%`)
+      .limit(10);
+
+    if (error) throw error;
+
+    return res.json({ profiles: data ?? [] });
+  } catch (err) {
+    console.error("Search profiles error:", err);
+    return res.status(500).json({ message: "Failed to search users" });
+  }
+});
+
 export default router;
+
