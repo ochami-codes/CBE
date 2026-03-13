@@ -141,7 +141,7 @@ router.post(
       const { data: member, error } = await supabase
         .from("members")
         .insert({
-          id: profileId,
+          profile_id: profileId,
           church_id,
           department_id: dept.id,
           role_name,
