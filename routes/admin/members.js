@@ -65,7 +65,7 @@ router.get("/", async (req, res) => {
         profile_id,
         role_name,
         active,
-        department,           -- keep the text copy
+        department,
         created_at,
         profiles!inner (
           full_name,
