@@ -42,122 +42,22 @@ router.post(
     }
 
     try {
-      /* ---------------- Resolve department ---------------- */
-
-      const { data: dept, error: deptError } = await supabase
-        .from("departments")
-        .select("id, type")
-        .eq("church_id", church_id)
-        .eq("code", department)
-        .single();
-
-      if (deptError || !dept) {
-        return res.status(400).json({ message: "Invalid department" });
-      }
-
-      let profileId;
-
-      /* ---------------- SYSTEM USER ---------------- */
-
-      if (profile_id) {
-        const { data: profile, error } = await supabase
-          .from("profiles")
-          .select("id")
-          .eq("id", profile_id)
-          .eq("church_id", church_id)
-          .single();
-
-        if (error || !profile) {
-          return res.status(404).json({ message: "Profile not found" });
-        }
-
-        profileId = profile.id;
-      }
-
-      /* ---------------- NON SYSTEM MEMBER ---------------- */
-
-      if (!profileId) {
-        const { data: existingProfile } = await supabase
-          .from("profiles")
-          .select("id")
-          .eq("church_id", church_id)
-          .eq("phone", phone)
-          .maybeSingle();
-
-        if (existingProfile) {
-          profileId = existingProfile.id;
-        } else {
-          const { data: newProfile, error } = await supabase
-            .from("profiles")
-            .insert({
-              full_name,
-              phone,
-              church_id,
-              is_system_user: false,
-            })
-            .select()
-            .single();
-
-          if (error) throw error;
-
-          profileId = newProfile.id;
-        }
-      }
-
-      /* ---------------- PREVENT DUPLICATE SAME DEPARTMENT ---------------- */
-
-      const { data: existingMember } = await supabase
-        .from("members")
-        .select("id")
-        .eq("id", profileId)
-        .eq("department_id", dept.id)
-        .maybeSingle();
-
-      if (existingMember) {
-        return res.status(409).json({
-          message: "Member already belongs to this department",
-        });
-      }
-
-      /* ---------------- AGE DEPARTMENT CHECK ---------------- */
-
-      if (dept.type === "age") {
-        const { data: existingAgeDept } = await supabase
-          .from("members")
-          .select("departments(type)")
-          .eq("id", profileId)
-          .eq("church_id", church_id)
-          .eq("departments.type", "age");
-
-        if (existingAgeDept?.length > 0) {
-          return res.status(409).json({
-            message: "Member already belongs to another age department",
-          });
-        }
-      }
-
-      /* ---------------- CREATE MEMBER ---------------- */
-
-      const { data: member, error } = await supabase
-        .from("members")
-        .insert({
-          profile_id: profileId,
-          church_id,
-          department_id: dept.id,
-          role_name,
-          active: true,
-        })
-        .select()
-        .single();
-
-      if (error) throw error;
-
-      return res.status(201).json({
-        message: "Member added successfully",
-        member,
+      const { data, error } = await supabase.rpc("add_member_rpc", {
+        p_church_id: church_id,
+        p_profile_id: profile_id || null,
+        p_full_name: full_name || null,
+        p_phone: phone || null,
+        p_department_code: department,
+        p_role_name: role_name,
       });
+
+      if (error) {
+        return res.status(400).json({ message: error.message });
+      }
+
+      return res.status(201).json(data);
     } catch (err) {
-      console.error("Add member error:", err);
+      console.error("RPC error:", err);
       return res.status(500).json({ message: "Failed to add member" });
     }
   }
@@ -165,67 +65,37 @@ router.post(
 /**
  * UPDATE MEMBER
  */
-router.put(
-  "/:id",
-  
-  requireRole(["Admin"]),
-  async (req, res) => {
-    const supabase = req.supabase;
-    const { id } = req.params;
-    const { church_id } = req.user;
-    const { full_name, department, role_name, email } = req.body;
+router.put("/:id", requireRole(["Admin"]), async (req, res) => {
+  const supabase = req.supabase;
+  const { id } = req.params;
+  const { church_id } = req.user;
 
-    if (!full_name && !department && !role_name && !email) {
-      return res.status(400).json({ message: "Nothing to update" });
-    }
+  const { full_name, department, role_name, email } = req.body;
 
-    try {
-      const updatePayload = {};
-
-      if (full_name) updatePayload.full_name = full_name;
-      if (role_name) updatePayload.role_name = role_name;
-
-      // Resolve department_id if department code provided
-      if (department) {
-        const { data: dept, error: deptError } = await supabase
-          .from("departments")
-          .select("id")
-          .eq("church_id", church_id)
-          .eq("code", department)
-          .single();
-
-        if (deptError || !dept) return res.status(400).json({ message: "Invalid department" });
-
-        updatePayload.department_id = dept.id;
-      }
-
-      // Resolve profile_id if email provided
-      if (email) {
-        const { data: profile } = await supabase
-          .from("profiles")
-          .select("id")
-          .eq("email", email)
-          .single();
-
-        if (profile) updatePayload.profile_id = profile.id;
-      }
-
-      const { error } = await supabase
-        .from("members")
-        .update(updatePayload)
-        .eq("id", id)
-        .eq("church_id", church_id);
-
-      if (error) throw error;
-
-      return res.json({ message: "Member updated successfully" });
-    } catch (err) {
-      console.error("Update member error:", err);
-      return res.status(500).json({ message: "Failed to update member" });
-    }
+  if (!full_name && !department && !role_name && !email) {
+    return res.status(400).json({ message: "Nothing to update" });
   }
-);
 
+  try {
+    const { data, error } = await supabase.rpc("update_member_rpc", {
+      p_member_id: id,
+      p_church_id: church_id,
+      p_full_name: full_name || null,
+      p_department_code: department || null,
+      p_role_name: role_name || null,
+      p_email: email || null,
+    });
+
+    if (error) {
+      return res.status(400).json({ message: error.message });
+    }
+
+    return res.json(data);
+  } catch (err) {
+    console.error("Update member error:", err);
+    return res.status(500).json({ message: "Failed to update member" });
+  }
+});
 /**
  * DELETE MEMBER
  */
