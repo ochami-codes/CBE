@@ -50,7 +50,7 @@ router.post(
 
 /**
  * GET MEMBERS
- * Join members + profiles directly (avoid misleading view data)
+ * Join members + profiles + departments directly
  */
 router.get("/", async (req, res) => {
   const supabase = req.supabase;
@@ -65,26 +65,28 @@ router.get("/", async (req, res) => {
         profile_id,
         role_name,
         active,
-        department,
+        department,           -- keep the text copy
         created_at,
         profiles!inner (
           full_name,
           email,
-          church_id
+          is_system_user
+        ),
+        departments!inner (
+          name
         )
       `)
       .eq("church_id", church_id)
       .order("full_name", {
-  ascending: true,
-  foreignTable: "profiles",
-});
+        ascending: true,
+        foreignTable: "profiles",
+      });
 
     if (department) {
       query = query.eq("department", department);
     }
 
     const { data, error } = await query;
-
     if (error) throw error;
 
     /* Normalize response */
@@ -93,19 +95,17 @@ router.get("/", async (req, res) => {
       profile_id: m.profile_id,
       full_name: m.profiles?.full_name || null,
       email: m.profiles?.email || null,
-      department: m.department,
+      is_system_user: m.profiles?.is_system_user || false, // frontend can hide buttons
+      department: m.departments?.name || m.department, // prefer department.name if exists
       role_name: m.role_name,
       active: m.active,
       created_at: m.created_at,
     }));
 
     return res.json({ members });
-
   } catch (err) {
     console.error("Fetch members error:", err);
-    return res.status(500).json({
-      message: "Failed to fetch members",
-    });
+    return res.status(500).json({ message: "Failed to fetch members" });
   }
 });
 /**
