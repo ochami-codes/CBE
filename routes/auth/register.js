@@ -103,16 +103,30 @@ router.post("/", async (req, res) => {
     );
 
     if (error) {
-      return res.status(400).json({ message: error.message });
+      console.error("❌ RPC ERROR:", {
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        code: error.code,
+      });
+
+      return res.status(400).json({
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        code: error.code,
+      });
     }
 
     return res.status(201).json(data);
 
   } catch (err) {
-    console.error("Registration error:", err);
+    console.error("🔥 Registration error FULL:", err);
+
     return res.status(500).json({
       message: err.message || "Registration failed",
     });
   }
 });
+
 export default router;
