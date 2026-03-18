@@ -8,6 +8,28 @@ const router = express.Router();
  * POST /members
  * Expects: { full_name, department (code), phone, role_name? }
  */
+/**
+ * Normalize Kenyan phone numbers to 2547XXXXXXXX format
+ */
+function normalizePhone(phone) {
+  if (!phone) return null;
+
+  phone = phone.replace(/\D/g, ""); // remove non-digits
+
+  if (phone.startsWith("0")) {
+    // 07xxxxxxxx → 2547xxxxxxxx
+    phone = "254" + phone.slice(1);
+  } else if (phone.startsWith("7") && phone.length === 9) {
+    // 7xxxxxxxx → 2547xxxxxxxx
+    phone = "254" + phone;
+  } else if (phone.startsWith("+254")) {
+    // +2547xxxxxxxx → 2547xxxxxxxx
+    phone = phone.slice(1);
+  }
+  // else assume it's already normalized
+  return phone;
+}
+
 router.post(
   "/",
   requireRole([
@@ -28,6 +50,7 @@ router.post(
       full_name,
       phone,
       department,
+      gender,
       role_name = "Member",
     } = req.body;
 
@@ -41,12 +64,15 @@ router.post(
       });
     }
 
+    const normalizedPhone = normalizePhone(phone);
+
     try {
       const { data, error } = await supabase.rpc("add_member_rpc", {
         p_church_id: church_id,
         p_profile_id: profile_id || null,
         p_full_name: full_name || null,
-        p_phone: phone || null,
+        p_gender: gender || null,
+        p_phone: normalizedPhone || null,
         p_department_code: department,
         p_role_name: role_name,
       });
