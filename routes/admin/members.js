@@ -58,50 +58,55 @@ router.get("/", async (req, res) => {
   const { department } = req.query;
 
   try {
-    let query = supabase
-      .from("members")
-      .select(`
-        id,
-        profile_id,
-        role_name,
-        active,
-        department,
-        created_at,
-        profiles!inner (
-          full_name,
-          email,
-          is_system_user
-        ),
-        departments!inner (
-          name
-        )
-      `)
-      .eq("church_id", church_id)
-      .order("full_name", {
-        ascending: true,
-        foreignTable: "profiles",
-      });
-
-    if (department) {
-      query = query.eq("department", department);
-    }
-
+let query = supabase
+  .from("members")
+  .select(`
+    id,
+    profile_id,
+    role_name,
+    active,
+    created_at,
+    profiles!inner (
+      full_name,
+      email,
+      is_system_user
+    ),
+    member_departments (
+      departments (
+        name
+      )
+    )
+  `)
+  .eq("church_id", church_id)
+  .order("full_name", {
+    ascending: true,
+    foreignTable: "profiles",
+  });
+   if (department) {
+  query = query.eq(
+    "member_departments.departments.code",
+    department
+  );
+}
     const { data, error } = await query;
     if (error) throw error;
 
     /* Normalize response */
-    const members = (data || []).map(m => ({
-      id: m.id,
-      profile_id: m.profile_id,
-      full_name: m.profiles?.full_name || null,
-      email: m.profiles?.email || null,
-      is_system_user: m.profiles?.is_system_user || false, // frontend can hide buttons
-      department: m.departments?.name || m.department, // prefer department.name if exists
-      role_name: m.role_name,
-      active: m.active,
-      created_at: m.created_at,
-    }));
+ const members = (data || []).map((m) => ({
+  id: m.id,
+  profile_id: m.profile_id,
+  full_name: m.profiles?.full_name || null,
+  email: m.profiles?.email || null,
+  is_system_user: m.profiles?.is_system_user || false,
 
+  // ✅ ALWAYS ARRAY
+  department:
+    m.member_departments?.map((md) => md.departments?.name) || [],
+
+  role_name: m.role_name,
+  active: m.active,
+  created_at: m.created_at,
+}));
     return res.json({ members });
   } catch (err) {
     console.error("Fetch members error:", err);
