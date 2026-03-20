@@ -52,7 +52,7 @@ router.post("/", async (req, res) => {
           church_id,
           is_member
         `)
-        .eq("id", user.id)
+        .eq("auth_user_id", user.id)
         .maybeSingle();
 
     if (profileError) {
@@ -75,7 +75,7 @@ router.post("/", async (req, res) => {
       await supabaseAdmin
         .from("members")
         .select("role_name, active")
-        .eq("profile_id", user.id)
+        .eq("profile_id", profile.id)
         .maybeSingle();
 
     if (memberError) {
