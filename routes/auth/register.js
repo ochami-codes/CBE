@@ -51,57 +51,40 @@ router.post("/", async (req, res) => {
       church_name,
     } = req.body;
 
-    // 1️⃣ Create auth user
-    const { data: authData, error: authError } =
-      await supabaseAuth.auth.signUp({
-        email,
-        password,
-        options: {
-          data: { full_name },
-          emailRedirectTo: `${process.env.FRONTEND_URL}/auth/callback`,
-        },
-      });
+// 1️⃣ Create auth user
+const { data: authData, error: authError } =
+  await supabaseAuth.auth.signUp({
+    email,
+    password,
+    options: {
+      data: { full_name },
+      emailRedirectTo: `${process.env.FRONTEND_URL}/auth/callback`,
+    },
+  });
 
-    if (authError) {
-      return res.status(400).json({ message: authError.message });
-    }
+if (authError) {
+  return res.status(400).json({ message: authError.message });
+}
 
-    const userId = authData.user.id;
+const userId = authData.user.id;
 
-    // 2️⃣ Wait for profile trigger
-    let profile;
-    for (let i = 0; i < 5; i++) {
-      const { data } = await supabaseAdmin
-        .from("profiles")
-        .select("*")
-        .eq("id", userId)
-        .maybeSingle();
+// ✅ Normalize phone
+const normalizedPhone = normalizeKenyanPhone(phone);
 
-      if (data) {
-        profile = data;
-        break;
-      }
-
-      await new Promise((r) => setTimeout(r, 300));
-    }
-
-    if (!profile) throw new Error("Profile creation failed");
-
-    // 3️⃣ Call RPC
-    const { data, error } = await supabaseAdmin.rpc(
-      "register_user_rpc",
-      {
-        p_user_id: userId,
-        p_full_name: full_name,
-        p_email: email,
-        p_phone: phone,
-        p_date_of_birth: date_of_birth,
-        p_gender: gender,
-        p_conference_id: conference_id,
-        p_church_name: church_name,
-      }
-    );
-
+// 2️⃣ Call RPC  (no waiting for trigger)
+const { data, error } = await supabaseAdmin.rpc(
+  "register_user_rpc",
+  {
+    p_user_id: userId,
+    p_full_name: full_name,
+    p_email: email,
+    p_phone: normalizedPhone,
+    p_date_of_birth: date_of_birth,
+    p_gender: gender,
+    p_conference_id: conference_id,
+    p_church_name: church_name,
+  }
+);
     if (error) {
       console.error("❌ RPC ERROR:", {
         message: error.message,
