@@ -24,11 +24,11 @@ router.get("/", async (req, res) => {
       return res.status(200).json({ user: null });
     }
 
-    const profileId = authUser.id;
+    const userId = authUser.id;
 
-    /* ---------------- Profile (Source of Truth) ---------------- */
+    /* ---------------- Profile (FIXED) ---------------- */
 
-    const { data: profile } = await supabaseAdmin
+    const { data: profile, error: profileError } = await supabaseAdmin
       .from("profiles")
       .select(`
         id,
@@ -37,14 +37,20 @@ router.get("/", async (req, res) => {
         church_id,
         is_member
       `)
-      .eq("id", profileId)
+      .eq("auth_user_id", userId)   // ✅ FIX
       .maybeSingle();
 
-    if (!profile) {
+    if (profileError) {
+      console.error("Profile fetch error:", profileError);
       return res.status(200).json({ user: null });
     }
 
-    /* ---------------- Church Name Resolution ---------------- */
+    if (!profile) {
+      console.warn("No profile for auth user:", userId);
+      return res.status(200).json({ user: null });
+    }
+
+    /* ---------------- Church ---------------- */
 
     let churchName = null;
 
@@ -58,12 +64,12 @@ router.get("/", async (req, res) => {
       churchName = church?.name ?? null;
     }
 
-    /* ---------------- Member Record ---------------- */
+    /* ---------------- Member ---------------- */
 
     const { data: member } = await supabaseAdmin
       .from("members")
       .select("role_name, active")
-      .eq("profile_id", profileId)
+      .eq("profile_id", profile.id)   // ✅ use profile.id
       .maybeSingle();
 
     if (member && member.active === false) {
@@ -73,14 +79,16 @@ router.get("/", async (req, res) => {
       });
     }
 
-    const isMember = profile.is_member === true;
+    /* ---------------- Flags ---------------- */
 
-    /* ---------------- Latest Membership Request ---------------- */
+    const isMember = !!profile.is_member;
+
+    /* ---------------- Membership Request ---------------- */
 
     const { data: requests } = await supabaseAdmin
       .from("membership_requests")
       .select("membership_request_status")
-      .eq("profile_id", profileId)
+      .eq("profile_id", profile.id)
       .order("membership_requested_at", { ascending: false })
       .limit(1);
 
@@ -112,6 +120,7 @@ router.get("/", async (req, res) => {
           : latestRequest?.membership_request_status ?? "none",
       },
     });
+
   } catch (err) {
     console.error("GET /auth/me error:", err);
     return res.status(200).json({ user: null });
