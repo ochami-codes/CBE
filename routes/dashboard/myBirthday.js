@@ -9,61 +9,59 @@ const router = express.Router();
  */
 router.get("/", async (req, res) => {
   const supabase = req.supabase;
-  const userId = req.user?.id;
+  const authUserId = req.user?.id;
 
-  if (!userId) {
+  if (!authUserId) {
     return res.status(401).json({ message: "Unauthenticated" });
   }
 
   try {
-    const { data, error } = await supabase
+    // 1️⃣ Fetch profile by auth_user_id
+    const { data: profile, error: profileError } = await supabase
       .from("profiles")
-      .select("full_name, date_of_birth")
-      .eq("auth_user_id", userId)
+      .select("id, full_name, date_of_birth")
+      .eq("auth_user_id", authUserId)
       .single();
 
-    if (error || !data) {
+    if (profileError || !profile) {
       return res.status(404).json({ message: "Profile not found" });
     }
 
-    // If no birthday is set
-    if (!data.date_of_birth) {
+    const profileId = profile.id; // real profile ID
+
+    // 2️⃣ Handle missing birthday safely
+    if (!profile.date_of_birth) {
       return res.json({
-        birthday: {
-          birthday: null,
-          full_name: data.full_name,
-        },
+        birthday: { birthday: null, full_name: profile.full_name },
         isBirthday: false,
       });
     }
 
-    // Parse the date safely
-    const dob = new Date(data.date_of_birth);
+    const dob = new Date(profile.date_of_birth);
     if (isNaN(dob)) {
       return res.json({
-        birthday: {
-          birthday: null,
-          full_name: data.full_name,
-        },
+        birthday: { birthday: null, full_name: profile.full_name },
         isBirthday: false,
       });
     }
 
+    // 3️⃣ Compare with today
     const today = new Date();
     const isBirthday =
       dob.getUTCMonth() === today.getUTCMonth() &&
       dob.getUTCDate() === today.getUTCDate();
 
-    res.json({
+    return res.json({
       birthday: {
-        birthday: data.date_of_birth, // matches frontend expectation
-        full_name: data.full_name,
+        birthday: profile.date_of_birth,
+        full_name: profile.full_name,
       },
       isBirthday,
     });
+
   } catch (err) {
-    console.error("My birthday route error:", err);
-    res.status(500).json({ message: "Failed to load birthday information" });
+    console.error("GET /dashboard/my-birthday error:", err);
+    return res.status(500).json({ message: "Failed to load birthday information" });
   }
 });
 

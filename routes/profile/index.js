@@ -1,4 +1,3 @@
-// backend/routes/profile/index.js
 import express from "express";
 
 const router = express.Router();
@@ -33,13 +32,15 @@ router.get("/", async (req, res) => {
       });
     }
 
+    const profileId = profile.id; 
+
     /* ---------------------------------
-       2️⃣ Fetch membership info separately (safer)
+       2️⃣ Fetch membership info separately
     ---------------------------------- */
     const { data: member } = await supabase
       .from("members")
       .select("role_name, active")
-      .eq("profile_id", userId)
+      .eq("profile_id", profileId)
       .maybeSingle();
 
     /* ---------------------------------
@@ -54,7 +55,7 @@ router.get("/", async (req, res) => {
         yearly_total,
         overall_total
       `)
-      .eq("profile_id", userId);
+      .eq("profile_id", profileId);
 
     const isMember = profile.is_member === true;
 
