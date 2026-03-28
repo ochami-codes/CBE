@@ -23,7 +23,7 @@ router.get("/", async (req, res) => {
         church_id,
         is_member
       `)
-      .eq("id", profile.id)
+      .eq("auth_user_id", userId)
       .single();
 
     if (profileError || !profile) {
