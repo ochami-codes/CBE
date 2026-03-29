@@ -24,7 +24,8 @@ router.get("/", async (req, res) => {
         created_at,
         profiles!inner (
           full_name,
-          email,
+          phone,
+          gender,
           is_system_user
         ),
         member_departments (
@@ -54,7 +55,8 @@ router.get("/", async (req, res) => {
       id: m.id,
       profile_id: m.profile_id,
       full_name: m.profiles?.full_name || null,
-      email: m.profiles?.email || null,
+      phone: m.profiles?.phone || null,
+      gender: m.profiles?.gender || null,
       is_system_user: m.profiles?.is_system_user || false,
 
       // Always array of department names
