@@ -12,6 +12,7 @@ router.get("/", async (req, res) => {
 
     /* ---------------------------------
        1️⃣ Fetch profile by id OR auth_user_id
+       ✅ UUIDs wrapped in quotes to work with .or()
     ---------------------------------- */
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
@@ -23,14 +24,18 @@ router.get("/", async (req, res) => {
         church_id,
         is_member
       `)
-      .or(`id.eq.${userId},auth_user_id.eq.${userId}`)
+      .or(`id.eq.'${userId}',auth_user_id.eq.'${userId}'`)
       .maybeSingle();
 
-    if (profileError || !profile) {
+    if (profileError) {
+      console.error("Profile fetch error:", profileError);
+    }
+
+    if (!profile) {
       return res.status(404).json({ message: "Profile not found" });
     }
 
-    const profileId = profile.id; // use actual profile.id
+    const profileId = profile.id; // actual profile ID
 
     /* ---------------------------------
        2️⃣ Fetch membership info

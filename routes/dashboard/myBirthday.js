@@ -2,14 +2,14 @@ import express from "express";
 
 const router = express.Router();
 
-/**
- * GET /dashboard/my-birthday
- */
+/* --------------------------------------------------
+   GET /dashboard/my-birthday
+-------------------------------------------------- */
 router.get("/", async (req, res) => {
   const supabase = req.supabase;
-  const userId = req.user?.id;
+  const authUserId = req.user?.id;
 
-  if (!userId) {
+  if (!authUserId) {
     return res.status(401).json({ message: "Unauthenticated" });
   }
 
@@ -18,10 +18,14 @@ router.get("/", async (req, res) => {
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
       .select("id, full_name, date_of_birth")
-      .or(`id.eq.${userId},auth_user_id.eq.${userId}`)
+      .or(`id.eq.'${authUserId}',auth_user_id.eq.'${authUserId}'`)
       .maybeSingle();
 
-    if (profileError || !profile) {
+    if (profileError) {
+      console.error("Profile fetch error:", profileError);
+    }
+
+    if (!profile) {
       return res.status(404).json({ message: "Profile not found" });
     }
 
@@ -29,8 +33,8 @@ router.get("/", async (req, res) => {
 
     const isBirthday =
       dob &&
-      dob.getUTCDate() === new Date().getUTCDate() &&
-      dob.getUTCMonth() === new Date().getUTCMonth();
+      dob.getUTCMonth() === new Date().getUTCMonth() &&
+      dob.getUTCDate() === new Date().getUTCDate();
 
     return res.json({
       birthday: {
