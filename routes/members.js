@@ -2,7 +2,71 @@ import express from "express";
 import { requireRole } from "../middleware/requireRole.js";
 
 const router = express.Router();
+/**
+ * GET MEMBERS
+ * Join members + profiles + departments directly
+ */
+router.get("/", async (req, res) => {
+  const supabase = req.supabase;
+  const { church_id } = req.user;
+  const { department } = req.query;
 
+  try {
+let query = supabase
+  .from("members")
+  .select(`
+    id,
+    profile_id,
+    role_name,
+    active,
+    created_at,
+    profiles!inner (
+      full_name,
+      email,
+      is_system_user
+    ),
+    member_departments (
+      departments (
+        name
+      )
+    )
+  `)
+  .eq("church_id", church_id)
+  .order("full_name", {
+    ascending: true,
+    foreignTable: "profiles",
+  });
+   if (department) {
+  query = query.eq(
+    "member_departments.departments.code",
+    department
+  );
+}
+    const { data, error } = await query;
+    if (error) throw error;
+
+    /* Normalize response */
+ const members = (data || []).map((m) => ({
+  id: m.id,
+  profile_id: m.profile_id,
+  full_name: m.profiles?.full_name || null,
+  email: m.profiles?.email || null,
+  is_system_user: m.profiles?.is_system_user || false,
+
+  // ✅ ALWAYS ARRAY
+  department:
+    m.member_departments?.map((md) => md.departments?.name) || [],
+
+  role_name: m.role_name,
+  active: m.active,
+  created_at: m.created_at,
+}));
+    return res.json({ members });
+  } catch (err) {
+    console.error("Fetch members error:", err);
+    return res.status(500).json({ message: "Failed to fetch members" });
+  }
+});
 /**
  * ADD / UPSERT MEMBER
  * POST /members
