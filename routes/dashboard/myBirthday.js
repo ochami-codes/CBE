@@ -2,46 +2,37 @@ import express from "express";
 
 const router = express.Router();
 
-/* --------------------------------------------------
-   GET /dashboard/my-birthday
--------------------------------------------------- */
 router.get("/", async (req, res) => {
-  const supabase = req.supabase;
-  const authUserId = req.user?.id;
-
-  if (!authUserId) {
-    return res.status(401).json({ message: "Unauthenticated" });
-  }
-
   try {
-    // 1️⃣ Fetch profile by id OR auth_user_id
-    const { data: profile, error: profileError } = await supabase
+    const supabase = req.supabase;
+    const userId = req.user?.id;
+
+    if (!userId) return res.status(401).json({ message: "Unauthenticated" });
+
+    // Fetch profile by auth_user_id OR id
+    const { data: profiles, error: profileError } = await supabase
       .from("profiles")
       .select("id, full_name, date_of_birth")
-      .or(`id.eq.'${authUserId}',auth_user_id.eq.'${authUserId}'`)
-      .maybeSingle();
+      .or(`id.eq.${userId},auth_user_id.eq.${userId}`)
+      .limit(1);
 
-    if (profileError) {
-      console.error("Profile fetch error:", profileError);
-    }
-
-    if (!profile) {
+    if (profileError || !profiles?.length) {
       return res.status(404).json({ message: "Profile not found" });
     }
 
-    const dob = profile.date_of_birth ? new Date(profile.date_of_birth) : null;
+    const profile = profiles[0];
 
-    const isBirthday =
-      dob &&
-      dob.getUTCMonth() === new Date().getUTCMonth() &&
-      dob.getUTCDate() === new Date().getUTCDate();
+    // Handle missing or invalid birthday
+    const dob = profile.date_of_birth ? new Date(profile.date_of_birth) : null;
+    const today = new Date();
+    const isBirthday = dob ? dob.getUTCDate() === today.getUTCDate() && dob.getUTCMonth() === today.getUTCMonth() : false;
 
     return res.json({
       birthday: {
-        birthday: profile.date_of_birth || null,
+        birthday: dob ? profile.date_of_birth : null,
         full_name: profile.full_name,
       },
-      isBirthday: !!isBirthday,
+      isBirthday,
     });
 
   } catch (err) {
