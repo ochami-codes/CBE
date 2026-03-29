@@ -1,4 +1,3 @@
-// backend/routes/dashboard/myBirthday.js
 import express from "express";
 
 const router = express.Router();
@@ -20,25 +19,24 @@ router.get("/", async (req, res) => {
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
       .select("id, full_name, date_of_birth")
-      .eq("auth_user_id", userId)
-      .single();
+      .eq("auth_user_id", authUserId)
+      .maybeSingle(); // ✅ safely returns null if not found
 
-    if (profileError || !profile) {
+    if (profileError) {
+      console.error("Profile fetch error:", profileError);
+      return res.status(500).json({ message: "Failed to load profile" });
+    }
+
+    if (!profile) {
+      console.warn("No profile found for auth user:", authUserId);
       return res.status(404).json({ message: "Profile not found" });
     }
 
-    const profileId = profile.id; // real profile ID
+    const profileId = profile.id;
 
-    // 2️⃣ Handle missing birthday safely
-    if (!profile.date_of_birth) {
-      return res.json({
-        birthday: { birthday: null, full_name: profile.full_name },
-        isBirthday: false,
-      });
-    }
-
-    const dob = new Date(profile.date_of_birth);
-    if (isNaN(dob)) {
+    // 2️⃣ Handle missing or invalid birthday
+    const dob = profile.date_of_birth ? new Date(profile.date_of_birth) : null;
+    if (!dob || isNaN(dob)) {
       return res.json({
         birthday: { birthday: null, full_name: profile.full_name },
         isBirthday: false,
