@@ -4,59 +4,51 @@ const router = express.Router();
 
 /* --------------------------------------------------
    GET /profile
-   Fetch profile for current user with debug logs
 -------------------------------------------------- */
 router.get("/", async (req, res) => {
+  console.error("=== /profile route hit ===");
+  console.error("req.user:", req.user);
+
+  const supabase = req.supabase;
+  const userId = req.user?.id;
+
+  if (!userId) {
+    console.error("❌ No userId attached to request! User might be unauthenticated.");
+    return res.status(401).json({ message: "Unauthenticated" });
+  }
+
   try {
-    const supabase = req.supabase;
-    const userId = req.user?.id;
+    console.error(`🔹 Fetching profile for userId: ${userId}`);
 
-    console.log("=== /profile request ===");
-    console.log("Received userId from middleware:", userId);
-
-    if (!userId) {
-      console.warn("No user ID in request, unauthenticated");
-      return res.status(401).json({ message: "Unauthenticated" });
-    }
-
-    /* ---------------------------------
-       1️⃣ Fetch profile by id OR auth_user_id
-    ---------------------------------- */
+    // 1️⃣ Fetch profile by id OR auth_user_id
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
       .select(`
         id,
+        auth_user_id,
         full_name,
         phone,
         email,
         church_id,
         is_member
       `)
-      .or(`id.eq.${userId},auth_user_id.eq.${userId}`)
+      .or(`id.eq.'${userId}',auth_user_id.eq.'${userId}'`)
       .maybeSingle();
 
-    console.log("Supabase profile query response:");
-    console.log("profileError:", profileError);
-    console.log("profile data:", profile);
-
     if (profileError) {
-      return res.status(500).json({
-        message: "Error fetching profile",
-        error: profileError.message,
-      });
+      console.error("❌ Profile fetch error:", profileError);
     }
 
     if (!profile) {
-      console.warn("Profile not found for userId:", userId);
+      console.error("❌ Profile not found for userId:", userId);
       return res.status(404).json({ message: "Profile not found" });
     }
 
-    const profileId = profile.id;
-    console.log("Using actual profile.id:", profileId);
+    console.error("✅ Profile found:", profile);
 
-    /* ---------------------------------
-       2️⃣ Fetch membership info
-    ---------------------------------- */
+    const profileId = profile.id;
+
+    // 2️⃣ Fetch membership info
     const { data: member, error: memberError } = await supabase
       .from("members")
       .select("role_name, active")
@@ -64,12 +56,12 @@ router.get("/", async (req, res) => {
       .maybeSingle();
 
     if (memberError) {
-      console.error("Error fetching member info:", memberError);
+      console.error("❌ Member fetch error:", memberError);
+    } else {
+      console.error("🔹 Member info:", member);
     }
 
-    /* ---------------------------------
-       3️⃣ Fetch contributions
-    ---------------------------------- */
+    // 3️⃣ Fetch contributions
     const { data: contributions, error: contributionsError } = await supabase
       .from("member_giving_summary")
       .select(`
@@ -82,17 +74,18 @@ router.get("/", async (req, res) => {
       .eq("profile_id", profileId);
 
     if (contributionsError) {
-      console.error("Error fetching contributions:", contributionsError);
+      console.error("❌ Contributions fetch error:", contributionsError);
+    } else {
+      console.error("🔹 Contributions count:", contributions?.length || 0);
     }
 
-    /* ---------------------------------
-       4️⃣ Build response
-    ---------------------------------- */
     const isMember = !!profile.is_member;
 
-    const response = {
+    // 4️⃣ Respond
+    return res.json({
       profile: {
         id: profile.id,
+        auth_user_id: profile.auth_user_id,
         full_name: profile.full_name || null,
         phone: profile.phone || null,
         email: profile.email || null,
@@ -102,18 +95,11 @@ router.get("/", async (req, res) => {
         is_member: isMember,
       },
       contributions: contributions || [],
-    };
-
-    console.log("Response prepared:", response);
-
-    return res.json(response);
+    });
 
   } catch (err) {
-    console.error("GET /profile failed with error:", err);
-    return res.status(500).json({
-      message: "Failed to load profile",
-      error: err.message,
-    });
+    console.error("❌ GET /profile unexpected error:", err);
+    return res.status(500).json({ message: "Failed to load profile" });
   }
 });
 
