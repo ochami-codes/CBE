@@ -8,13 +8,11 @@ const router = express.Router();
 router.get("/", async (req, res) => {
   try {
     const supabase = req.supabase;
-    const authUserId = req.user?.id;
+    const userId = req.user.id;
 
-    if (!authUserId) {
-      return res.status(401).json({ message: "Unauthenticated" });
-    }
-
-    // ---------------- Fetch profile by auth_user_id ----------------
+    /* ---------------------------------
+       1️⃣ Fetch profile by id OR auth_user_id
+    ---------------------------------- */
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
       .select(`
@@ -25,29 +23,27 @@ router.get("/", async (req, res) => {
         church_id,
         is_member
       `)
-      .eq("auth_user_id", authUserId)
+      .or(`id.eq.${userId},auth_user_id.eq.${userId}`)
       .maybeSingle();
 
-    if (profileError) {
-      console.error("Profile fetch error:", profileError);
-      return res.status(500).json({ message: "Failed to load profile" });
-    }
-
-    if (!profile) {
-      console.warn("No profile found for auth user:", authUserId);
+    if (profileError || !profile) {
       return res.status(404).json({ message: "Profile not found" });
     }
 
-    const profileId = profile.id;
+    const profileId = profile.id; // use actual profile.id
 
-    // ---------------- Fetch membership info ----------------
+    /* ---------------------------------
+       2️⃣ Fetch membership info
+    ---------------------------------- */
     const { data: member } = await supabase
       .from("members")
       .select("role_name, active")
       .eq("profile_id", profileId)
       .maybeSingle();
 
-    // ---------------- Fetch giving summary ----------------
+    /* ---------------------------------
+       3️⃣ Fetch contributions
+    ---------------------------------- */
     const { data: contributions } = await supabase
       .from("member_giving_summary")
       .select(`
@@ -61,11 +57,12 @@ router.get("/", async (req, res) => {
 
     const isMember = !!profile.is_member;
 
-    // ---------------- Respond ----------------
+    /* ---------------------------------
+       4️⃣ Respond
+    ---------------------------------- */
     return res.json({
       profile: {
         id: profile.id,
-        auth_user_id: authUserId, // include for clarity
         full_name: profile.full_name || null,
         phone: profile.phone || null,
         email: profile.email || null,
@@ -76,6 +73,7 @@ router.get("/", async (req, res) => {
       },
       contributions: contributions || [],
     });
+
   } catch (err) {
     console.error("GET /profile error:", err);
     return res.status(500).json({ message: "Failed to load profile" });
