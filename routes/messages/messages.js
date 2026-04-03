@@ -10,7 +10,7 @@ router.post("/", async (req, res) => {
   const supabase = req.supabase;
   const { id: profile_id, church_id } = req.user;
 
-  const { content, target_role, recipient_profile_id, parent_message_id } = req.body;
+  const { content, target_role_id, recipient_profile_id, parent_message_id } = req.body;
 
   // ---------- Validation ----------
   if (!content?.trim()) {
@@ -18,7 +18,7 @@ router.post("/", async (req, res) => {
   }
 
   if (!target_role_id && !recipient_profile_id) {
-    return res.status(400).json({ error: "Provide a target role or recipient" });
+    return res.status(400).json({ error: "Provide a target role ID or recipient profile ID" });
   }
 
   try {
@@ -26,7 +26,7 @@ router.post("/", async (req, res) => {
       p_sender_profile_id: profile_id,
       p_church_id: church_id,
       p_content: content,
-      p_target_role: target_role || null,
+      p_target_role_id: target_role_id || null,
       p_recipient_profile_id: recipient_profile_id || null,
       p_parent_message_id: parent_message_id || null,
     });
@@ -42,7 +42,6 @@ router.post("/", async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
-
 // ------------------------------
 // GET /api/messages/inbox
 // Fetch all messages for the current user
