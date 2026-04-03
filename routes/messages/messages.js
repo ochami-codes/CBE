@@ -17,7 +17,7 @@ router.post("/", async (req, res) => {
     return res.status(400).json({ error: "Message cannot be empty" });
   }
 
-  if (!target_role && !recipient_profile_id) {
+  if (!target_role_id && !recipient_profile_id) {
     return res.status(400).json({ error: "Provide a target role or recipient" });
   }
 
