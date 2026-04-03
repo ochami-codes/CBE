@@ -35,7 +35,7 @@ router.post("/", async (req, res) => {
 
     res.json({
       success: true,
-      message_id: data?.message_id ?? null,
+      message_id: data?.[0]?.message_id ?? null,
     });
   } catch (err) {
     console.error("❌ POST /api/messages error:", err);
