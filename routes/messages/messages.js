@@ -122,4 +122,59 @@ router.post("/read", async (req, res) => {
   }
 });
 
+// ------------------------------
+// GET /messages/leaders
+// Fetch leaders grouped by role
+// ------------------------------
+router.get("/leaders", async (req, res) => {
+  const supabase = req.supabase;
+  const { church_id } = req.user;
+
+  try {
+    // Get ONLY leaders directly from DB
+    const { data, error } = await supabase
+      .from("profiles")
+      .select(`
+        id,
+        full_name,
+        role:roles (
+          id,
+          name,
+          is_leader
+        )
+      `)
+      .eq("church_id", church_id)
+      .eq("roles.is_leader", true); // 👈 KEY CHANGE
+
+    if (error) throw error;
+
+    // Group by role
+    const grouped = {};
+
+    data.forEach((user) => {
+      const roleName = user.role?.name;
+
+      if (!roleName) return;
+
+      if (!grouped[roleName]) {
+        grouped[roleName] = {
+          role: roleName,
+          users: [],
+        };
+      }
+
+      grouped[roleName].users.push({
+        id: user.id,
+        name: user.full_name,
+      });
+    });
+
+    res.json({
+      roles: Object.values(grouped),
+    });
+  } catch (err) {
+    console.error("❌ GET /messages/leaders error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
 export default router;
