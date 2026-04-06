@@ -177,4 +177,26 @@ router.get("/leaders", async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+// ------------------------------
+   // GET /messages/unread-count
+// ------------------------------
+router.get("/unread-count", async (req, res) => {
+  const supabase = req.supabase;
+  const { id: profile_id } = req.user;
+
+  try {
+   const { count, error } = await supabase
+  .from("message_recipients")
+  .select("*", { count: "exact", head: true })
+  .eq("recipient_user_id", profile_id)
+  .eq("is_read", false)
+  .eq("church_id", church_id);
+    if (error) throw error;
+
+    res.json({ count: count || 0 });
+  } catch (err) {
+    console.error("❌ GET /messages/unread-count error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
 export default router;
