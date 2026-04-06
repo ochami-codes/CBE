@@ -182,7 +182,7 @@ router.get("/leaders", async (req, res) => {
 // ------------------------------
 router.get("/unread-count", async (req, res) => {
   const supabase = req.supabase;
-  const { id: profile_id } = req.user;
+  const { id: profile_id, church_id } = req.user;
 
   try {
    const { count, error } = await supabase
