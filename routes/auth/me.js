@@ -13,19 +13,12 @@ router.get("/", async (req, res) => {
 
     const token = authHeader.split(" ")[1];
 
-    /* ---------------- Token Validation ---------------- */
-    const {
-      data: { user: authUser },
-      error: authError,
-    } = await supabaseAdmin.auth.getUser(token);
-
-    if (authError || !authUser) {
-      return res.status(200).json({ user: null });
-    }
-
+    // ---------------- Token Validation ----------------
+    const { data: { user: authUser }, error: authError } = await supabaseAdmin.auth.getUser(token);
+    if (authError || !authUser) return res.status(200).json({ user: null });
     const userId = authUser.id;
 
-    /* ---------------- Profile ---------------- */
+    // ---------------- Profile ----------------
     const { data: profile, error: profileError } = await supabaseAdmin
       .from("profiles")
       .select(`
@@ -40,14 +33,10 @@ router.get("/", async (req, res) => {
       .or(`id.eq.${userId},auth_user_id.eq.${userId}`)
       .maybeSingle();
 
-    if (profileError || !profile) {
-      console.warn("No profile for auth user:", userId);
-      return res.status(200).json({ user: null });
-    }
-
+    if (profileError || !profile) return res.status(200).json({ user: null });
     const profileId = profile.id;
 
-    /* ---------------- Church ---------------- */
+    // ---------------- Church ----------------
     let churchName = null;
     if (profile.church_id) {
       const { data: church } = await supabaseAdmin
@@ -58,23 +47,31 @@ router.get("/", async (req, res) => {
       churchName = church?.name ?? null;
     }
 
-    /* ---------------- Member with Role Join ---------------- */
-const { data: member } = await supabaseAdmin
-  .from("members")
-  .select("role_name, active")
-  .eq("profile_id", profileId)
-  .maybeSingle();
+    // ---------------- Member with Role Join ----------------
+    // Join roles table to normalize role_name
+    const { data: member } = await supabaseAdmin
+      .from("members")
+      .select(`
+        active,
+        roles!members_role_id(name)
+      `)
+      .eq("profile_id", profileId)
+      .maybeSingle();
 
-if (member && member.active === false) {
-  return res.status(403).json({
-    user: null,
-    message: "Account deactivated",
-  });
-}
+    if (member && member.active === false) {
+      return res.status(403).json({ user: null, message: "Account deactivated" });
+    }
 
     const isMember = !!profile.is_member;
+    const memberActive = member?.active ?? true;
 
-    /* ---------------- Membership Request ---------------- */
+    // Normalize role_name: lowercase roles.name if exists, fallback to "member"
+    let roleName = "guest";
+    if (isMember) {
+      roleName = member?.roles?.name?.toLowerCase() || "member";
+    }
+
+    // ---------------- Membership Request ----------------
     const { data: requests } = await supabaseAdmin
       .from("membership_requests")
       .select("membership_request_status")
@@ -84,25 +81,20 @@ if (member && member.active === false) {
 
     const latestRequest = requests?.[0] ?? null;
 
-    /* ---------------- Response ---------------- */
+    // ---------------- Response ----------------
     return res.status(200).json({
       user: {
         id: profile.id,
         auth_user_id: profile.auth_user_id,
         email: profile.email,
         phone: profile.phone,
-        full_name:
-          profile.full_name ||
-          authUser.email?.split("@")[0] ||
-          "Guest",
-        role_name: isMember ? roleName : "Guest",
+        full_name: profile.full_name || authUser.email?.split("@")[0] || "Guest",
+        role_name: roleName,
         church_id: profile.church_id ?? null,
         church_name: churchName,
         active: memberActive,
         is_member: isMember,
-        membership_status: isMember
-          ? "approved"
-          : latestRequest?.membership_request_status ?? "none",
+        membership_status: isMember ? "approved" : latestRequest?.membership_request_status ?? "none",
       },
     });
 
