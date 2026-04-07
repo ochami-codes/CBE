@@ -48,24 +48,23 @@ router.get("/", async (req, res) => {
     }
 
     // ---------------- Member with Role Join ----------------
-    // Join roles table to normalize role_name
     const { data: member } = await supabaseAdmin
       .from("members")
-      .select(`
-        active,
-        roles!members_role_id(name)
-      `)
+      .select("role_name, active")
       .eq("profile_id", profileId)
       .maybeSingle();
 
     if (member && member.active === false) {
-      return res.status(403).json({ user: null, message: "Account deactivated" });
+      return res.status(403).json({
+        user: null,
+        message: "Account deactivated",
+      });
     }
 
     const isMember = !!profile.is_member;
     const memberActive = member?.active ?? true;
 
-    // Normalize role_name: lowercase roles.name if exists, fallback to "member"
+    // Normalize role_name
     let roleName = "guest";
     if (isMember) {
       roleName = member?.roles?.name?.toLowerCase() || "member";
