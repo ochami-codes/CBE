@@ -66,10 +66,11 @@ router.get("/inbox", async (req, res) => {
   }
 });
 
-// ------------------------------
 // GET /api/messages/conversation/:thread_id
-// Fetch all messages in a conversation thread
-// ------------------------------
+// Fetch all messages in a conversation (flat thread)
+import express from "express";
+const router = express.Router();
+
 router.get("/conversation/:thread_id", async (req, res) => {
   const supabase = req.supabase;
   const { id: profile_id, church_id } = req.user;
@@ -80,18 +81,44 @@ router.get("/conversation/:thread_id", async (req, res) => {
   }
 
   try {
-    const { data, error } = await supabase.rpc("get_conversation", {
-      p_thread_id: thread_id,
-      p_profile_id: profile_id,
-      p_church_id: church_id,
-    });
+    // Debug logging
+    console.log(`[DEBUG] Fetching messages for thread_id=${thread_id}, profile_id=${profile_id}`);
 
-    if (error) throw error;
+    // Fetch messages in this flat thread (root + direct replies)
+    const { data, error } = await supabase
+      .from("messages")
+      .select(`
+        id,
+        content,
+        created_at,
+        sender_id,
+        parent_message_id,
+        profiles!inner(full_name)
+      `)
+      .or(`id.eq.${thread_id},parent_message_id.eq.${thread_id}`)
+      .eq("church_id", church_id)
+      .order("created_at", { ascending: true });
 
-    res.json({ messages: data || [] });
+    if (error) {
+      console.error(`[ERROR] Supabase fetch failed:`, error);
+      return res.status(500).json({ error: error.message || "Failed to fetch messages" });
+    }
+
+    // Transform for frontend
+    const messages = data.map((m) => ({
+      id: m.id,
+      content: m.content,
+      created_at: m.created_at,
+      sender_id: m.sender_id,
+      sender_name: m.profiles.full_name,
+      is_me: m.sender_id === profile_id,
+      parent_message_id: m.parent_message_id,
+    }));
+
+    res.json({ messages });
   } catch (err) {
-    console.error(`❌ GET /api/messages/conversation/${thread_id} error:`, err);
-    res.status(500).json({ error: err.message });
+    console.error(`[ERROR] GET /conversation/${thread_id} failed:`, err);
+    res.status(500).json({ error: err.message || "Unexpected error" });
   }
 });
 
