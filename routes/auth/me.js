@@ -67,7 +67,7 @@ router.get("/", async (req, res) => {
     // Normalize role_name
     let roleName = "guest";
     if (isMember) {
-      roleName = member?.roles?.name?.toLowerCase() || "member";
+      roleName = member?.role_name?.toLowerCase() || "member";
     }
 
     // ---------------- Membership Request ----------------
