@@ -68,9 +68,6 @@ router.get("/inbox", async (req, res) => {
 
 // GET /api/messages/conversation/:thread_id
 // Fetch all messages in a conversation (flat thread)
-import express from "express";
-const router = express.Router();
-
 router.get("/conversation/:thread_id", async (req, res) => {
   const supabase = req.supabase;
   const { id: profile_id, church_id } = req.user;
