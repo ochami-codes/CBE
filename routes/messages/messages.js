@@ -17,10 +17,11 @@ router.post("/", async (req, res) => {
     return res.status(400).json({ error: "Message cannot be empty" });
   }
 
-  if (!target_role_id && !recipient_profile_id) {
-    return res.status(400).json({ error: "Provide a target role ID or recipient profile ID" });
-  }
-
+if (!parent_message_id && !target_role_id && !recipient_profile_id) {
+  return res.status(400).json({
+    error: "Provide a thread, target role ID, or recipient profile ID",
+  });
+}
   try {
     const { data, error } = await supabase.rpc("send_message_with_notifications", {
       p_sender_profile_id: profile_id,
