@@ -25,7 +25,7 @@ router.get("/", async (req, res) => {
 
     const userId = authUser.id;
 
-    /* ---------------- Profile (FIXED) ---------------- */
+    /* ---------------- Profile ---------------- */
     const { data: profile, error: profileError } = await supabaseAdmin
       .from("profiles")
       .select(`
@@ -58,14 +58,26 @@ router.get("/", async (req, res) => {
       churchName = church?.name ?? null;
     }
 
-    /* ---------------- Member ---------------- */
-    const { data: member } = await supabaseAdmin
+    /* ---------------- Member with Role Join ---------------- */
+    const { data: memberData, error: memberError } = await supabaseAdmin
       .from("members")
-      .select("role_name, active")
+      .select(`
+        active,
+        role_id,
+        role:roles!members_role_id_fkey(name)
+      `)
       .eq("profile_id", profileId)
       .maybeSingle();
 
-    if (member && member.active === false) {
+    if (memberError) {
+      console.error("Error fetching member info:", memberError);
+      return res.status(200).json({ user: null });
+    }
+
+    const memberActive = memberData?.active ?? true;
+    const roleName = memberData?.role?.name || "Member";
+
+    if (memberActive === false) {
       return res.status(403).json({
         user: null,
         message: "Account deactivated",
@@ -95,10 +107,10 @@ router.get("/", async (req, res) => {
           profile.full_name ||
           authUser.email?.split("@")[0] ||
           "Guest",
-        role_name: isMember ? member?.role_name || "Member" : "Guest",
+        role_name: isMember ? roleName : "Guest",
         church_id: profile.church_id ?? null,
         church_name: churchName,
-        active: member?.active ?? true,
+        active: memberActive,
         is_member: isMember,
         membership_status: isMember
           ? "approved"
