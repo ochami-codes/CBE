@@ -70,18 +70,11 @@ router.get("/inbox", async (req, res) => {
 // Fetch all messages in a conversation (flat thread)
 router.get("/conversation/:thread_id", async (req, res) => {
   const supabase = req.supabase;
-  const { id: profile_id, church_id } = req.user;
   const { thread_id } = req.params;
 
-  if (!thread_id) {
-    return res.status(400).json({ error: "Thread ID is required" });
-  }
+  if (!thread_id) return res.status(400).json({ error: "Thread ID is required" });
 
   try {
-    // Debug logging
-    console.log(`[DEBUG] Fetching messages for thread_id=${thread_id}, profile_id=${profile_id}`);
-
-    // Fetch messages in this flat thread (root + direct replies)
     const { data, error } = await supabase
       .from("messages")
       .select(`
@@ -90,32 +83,17 @@ router.get("/conversation/:thread_id", async (req, res) => {
         created_at,
         sender_id,
         parent_message_id,
-        profiles!inner(full_name)
+        sender:profiles!messages_sender_id(full_name)
       `)
       .or(`id.eq.${thread_id},parent_message_id.eq.${thread_id}`)
-      .eq("church_id", church_id)
       .order("created_at", { ascending: true });
 
-    if (error) {
-      console.error(`[ERROR] Supabase fetch failed:`, error);
-      return res.status(500).json({ error: error.message || "Failed to fetch messages" });
-    }
+    if (error) throw error;
 
-    // Transform for frontend
-    const messages = data.map((m) => ({
-      id: m.id,
-      content: m.content,
-      created_at: m.created_at,
-      sender_id: m.sender_id,
-      sender_name: m.profiles.full_name,
-      is_me: m.sender_id === profile_id,
-      parent_message_id: m.parent_message_id,
-    }));
-
-    res.json({ messages });
+    res.json({ messages: data || [] });
   } catch (err) {
-    console.error(`[ERROR] GET /conversation/${thread_id} failed:`, err);
-    res.status(500).json({ error: err.message || "Unexpected error" });
+    console.error("❌ GET conversation error:", err);
+    res.status(500).json({ error: err.message });
   }
 });
 
