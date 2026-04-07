@@ -83,7 +83,7 @@ router.get("/conversation/:thread_id", async (req, res) => {
         created_at,
         sender_id,
         parent_message_id,
-        sender:profiles!messages_sender_id(full_name)
+        sender:profiles!messages_sender_fk(full_name)
       `)
       .or(`id.eq.${thread_id},parent_message_id.eq.${thread_id}`)
       .order("created_at", { ascending: true });
