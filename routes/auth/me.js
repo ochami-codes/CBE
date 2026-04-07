@@ -59,30 +59,18 @@ router.get("/", async (req, res) => {
     }
 
     /* ---------------- Member with Role Join ---------------- */
-    const { data: memberData, error: memberError } = await supabaseAdmin
-      .from("members")
-      .select(`
-        active,
-        role_id,
-        role:roles!members_role_id_fkey(name)
-      `)
-      .eq("profile_id", profileId)
-      .maybeSingle();
+const { data: member } = await supabaseAdmin
+  .from("members")
+  .select("role_name, active")
+  .eq("profile_id", profileId)
+  .maybeSingle();
 
-    if (memberError) {
-      console.error("Error fetching member info:", memberError);
-      return res.status(200).json({ user: null });
-    }
-
-    const memberActive = memberData?.active ?? true;
-    const roleName = memberData?.role?.name || "Member";
-
-    if (memberActive === false) {
-      return res.status(403).json({
-        user: null,
-        message: "Account deactivated",
-      });
-    }
+if (member && member.active === false) {
+  return res.status(403).json({
+    user: null,
+    message: "Account deactivated",
+  });
+}
 
     const isMember = !!profile.is_member;
 
