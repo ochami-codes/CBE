@@ -25,6 +25,7 @@ import messageRoutes from "./routes/messages/messages.js";
 import memberRoutes from "./routes/members.js";
 import notificationRoutes from "./routes/notifications.js";
 import attendanceRoutes from "./routes/attendance.js";
+import roleRoutes from "./routes/roles.js"
 import myRequest from "./routes/role-requests.js";
 import { authMiddleware } from "./middleware/authMiddleware.js";
 import requireAdmin from "./middleware/requireAdmin.js";
@@ -46,6 +47,7 @@ app.use((req, res, next) => {
 /* ------------------ Public routes ------------------ */
 app.use("/auth", authRoutes);
 app.use("/churches", churchRoutes);
+app.use("/roles",roleRoutes); 
 app.use("/conferences", conferenceRoutes);
 /* ------------------ Dashboard routes (auth optional inside route) ------------------ */
 app.use("/dashboard/daily-verse", verseRoutes);
@@ -60,6 +62,7 @@ app.use("/profile", authMiddleware, profileRoutes);
 app.use("/membership-requests", authMiddleware, membershipRoutes);
 app.use("/donations", authMiddleware, donationRoutes);
 app.use("/events", authMiddleware, eventRoutes);
+
 app.use("/pastor", authMiddleware, pastorRoutes);
 app.use("/members", authMiddleware, memberRoutes);
 app.use("/departments", authMiddleware, departmentRoutes);

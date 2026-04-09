@@ -1,5 +1,6 @@
 import express from "express";
 import { supabaseAdmin } from "../../supabaseClient.js";
+import { getUserPermissions, normalizeRole } from "../../config/roles.js";
 
 const router = express.Router();
 
@@ -65,11 +66,14 @@ router.get("/", async (req, res) => {
     const memberActive = member?.active ?? true;
 
     // Normalize role_name
-    let roleName = "guest";
-    if (isMember) {
-      roleName = member?.role_name?.toLowerCase() || "member";
-    }
+    let roles = ["guest"];
 
+if (isMember) {
+  const normalizedRole = normalizeRole(member?.role_name) || "member";
+  roles = [normalizedRole];
+}
+
+const permissions = getUserPermissions(roles);
     // ---------------- Membership Request ----------------
     const { data: requests } = await supabaseAdmin
       .from("membership_requests")
@@ -88,7 +92,9 @@ router.get("/", async (req, res) => {
         email: profile.email,
         phone: profile.phone,
         full_name: profile.full_name || authUser.email?.split("@")[0] || "Guest",
-        role_name: roleName,
+        roles,
+        permissions,
+        role_name: roles[0],
         church_id: profile.church_id ?? null,
         church_name: churchName,
         active: memberActive,

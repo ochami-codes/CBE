@@ -1,21 +1,21 @@
 import express from "express";
+import {
+  normalizeRole,
+  isValidRole,
+  REQUESTABLE_ROLES,
+} from "../config/roles.js";
 
 const router = express.Router();
 
-const ALLOWED_ROLES = [
-  "Admin",
-  "Pastor",
-  "Treasurer",
-  "Children_leader",
-  "Youth_leader",
-  "Communication_leader",
-];
-
 router.post("/", async (req, res) => {
   const supabase = req.supabase;
-  const { requested_role } = req.body;
+  let { requested_role } = req.body;
 
   const { member_id, church_id, is_member } = req.user;
+
+  // ------------------------------------
+  // VALIDATIONS
+  // ------------------------------------
 
   if (!is_member) {
     return res.status(403).json({
@@ -41,9 +41,20 @@ router.post("/", async (req, res) => {
     });
   }
 
-  if (!ALLOWED_ROLES.includes(requested_role)) {
+  // Normalize role (Admin → admin, etc.)
+  requested_role = normalizeRole(requested_role);
+
+  // ✅ Validate role exists
+  if (!isValidRole(requested_role)) {
     return res.status(400).json({
-      error: "Invalid requested_role",
+      error: "Invalid role",
+    });
+  }
+
+  // ✅ Ensure role is requestable (no admin, guest, etc.)
+  if (!REQUESTABLE_ROLES.includes(requested_role)) {
+    return res.status(403).json({
+      error: "You cannot request this role",
     });
   }
 
@@ -65,9 +76,9 @@ router.post("/", async (req, res) => {
     });
   }
 });
+
 /**
  * GET /role-requests/my-requests
- * Fetch logged-in member's role requests
  */
 router.get("/my-requests", async (req, res) => {
   const supabase = req.supabase;
