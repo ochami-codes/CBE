@@ -2,7 +2,6 @@ import express from "express";
 import {
   ROLES,
   ALL_ROLES,
-  REQUESTABLE_ROLES,
 } from "../config/roles.js";
 
 const router = express.Router();
@@ -12,12 +11,10 @@ router.get("/", (req, res) => {
     const roles = ALL_ROLES.map((role) => ({
       name: role,
       label: ROLES[role]?.label || role,
-      requestable: REQUESTABLE_ROLES.includes(role),
     }));
 
     return res.status(200).json({
       roles,
-      requestable_roles: REQUESTABLE_ROLES,
       all_roles: ALL_ROLES,
     });
 
