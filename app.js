@@ -8,7 +8,6 @@ import adminRoutes from "./routes/admin/index.js";
 import membershipRoutes from "./routes/membership/member.js";
 import adminMembershipRoutes from "./routes/membership/admin.js";
 import donationRoutes from "./routes/donations.js";
-import eventRoutes from "./routes/events.js";
 import pastorRoutes from "./routes/pastor/index.js";
 import profileRoutes from "./routes/profile/index.js";
 import churchRoutes from "./routes/churches.js";
@@ -28,7 +27,6 @@ import attendanceRoutes from "./routes/attendance.js";
 import roleRoutes from "./routes/roles.js"
 import myRequest from "./routes/role-requests.js";
 import { authMiddleware } from "./middleware/authMiddleware.js";
-import requireAdmin from "./middleware/requireAdmin.js";
 import conferenceRoutes from "./routes/conferences.js";
 import { supabaseAdmin } from "./supabaseClient.js";
 
@@ -61,7 +59,6 @@ app.use("/messages", authMiddleware, messageRoutes);
 app.use("/profile", authMiddleware, profileRoutes);
 app.use("/membership-requests", authMiddleware, membershipRoutes);
 app.use("/donations", authMiddleware, donationRoutes);
-app.use("/events", authMiddleware, eventRoutes);
 
 app.use("/pastor", authMiddleware, pastorRoutes);
 app.use("/members", authMiddleware, memberRoutes);
@@ -73,8 +70,8 @@ app.use("/treasury/transactions", authMiddleware, treasuryTransactionRoutes);
 app.use("/role-requests", authMiddleware, myRequest);
 
 /* ------------------ Admin routes ------------------ */
-app.use("/admin", authMiddleware, requireAdmin, adminRoutes);
-app.use("/admin/membership-requests", authMiddleware, requireAdmin, adminMembershipRoutes);
+app.use("/admin", authMiddleware, adminRoutes);
+app.use("/admin/membership-requests", authMiddleware, adminMembershipRoutes);
 
 /* ------------------ Health check ------------------ */
 app.get("/", (req, res) => {

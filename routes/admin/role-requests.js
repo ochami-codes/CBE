@@ -1,13 +1,32 @@
 import express from "express";
-import requireAdmin from "../../middleware/requireAdmin.js";
 
 const router = express.Router();
 
+/* =====================================================
+   Helper: Role Management Access
+===================================================== */
+function requireRoleManagement(req, res) {
+  const { permissions, is_member } = req.user;
+
+  if (!is_member) {
+    res.status(403).json({ error: "Members only" });
+    return false;
+  }
+
+  if (!permissions.includes("manage_roles")) {
+    res.status(403).json({ error: "Forbidden" });
+    return false;
+  }
+
+  return true;
+}
+
 /**
  * GET /admin/role-requests
- * List pending role requests for this church
  */
-router.get("/", requireAdmin, async (req, res) => {
+router.get("/", async (req, res) => {
+  if (!requireRoleManagement(req, res)) return;
+
   const supabase = req.supabase;
   const churchId = req.user.church_id;
 
@@ -33,8 +52,7 @@ router.get("/", requireAdmin, async (req, res) => {
 
     if (error) throw error;
 
-    /* Optional: Shape response for cleaner frontend */
-    const shaped = (data || []).map(r => ({
+    const shaped = (data || []).map((r) => ({
       id: r.role_request_id,
       requested_role: r.requested_role,
       role_request_status: r.role_request_status,
@@ -54,16 +72,18 @@ router.get("/", requireAdmin, async (req, res) => {
     }));
 
     res.json({ requests: shaped });
-
   } catch (err) {
     console.error("Fetch role requests error:", err);
     res.status(500).json({ error: "Failed to load role requests" });
   }
 });
+
 /**
  * POST /admin/role-requests/:id/approve
  */
-router.post("/:id/approve", requireAdmin, async (req, res) => {
+router.post("/:id/approve", async (req, res) => {
+  if (!requireRoleManagement(req, res)) return;
+
   const supabase = req.supabase;
   const { id } = req.params;
   const adminId = req.user.id;
@@ -85,10 +105,13 @@ router.post("/:id/approve", requireAdmin, async (req, res) => {
     });
   }
 });
+
 /**
  * POST /admin/role-requests/:id/reject
  */
-router.post("/:id/reject", requireAdmin, async (req, res) => {
+router.post("/:id/reject", async (req, res) => {
+  if (!requireRoleManagement(req, res)) return;
+
   const supabase = req.supabase;
   const { id } = req.params;
   const adminId = req.user.id;
@@ -110,4 +133,5 @@ router.post("/:id/reject", requireAdmin, async (req, res) => {
     });
   }
 });
+
 export default router;

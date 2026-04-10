@@ -1,8 +1,10 @@
 import { supabaseAuth, supabaseAdmin } from "../supabaseClient.js";
+import { normalizeRole, getUserPermissions } from "../config/roles.js";
 
 export async function authMiddleware(req, res, next) {
   try {
     console.log("=== Auth middleware hit ===");
+
     const authHeader = req.headers.authorization;
 
     if (!authHeader?.startsWith("Bearer ")) {
@@ -26,7 +28,7 @@ export async function authMiddleware(req, res, next) {
 
     console.log("🔹 Authenticated user:", authUser.id, authUser.email);
 
-    /* ---------- Fetch Profile (supports converted users) ---------- */
+    /* ---------- Fetch Profile ---------- */
     const { data: profile, error: profileError } = await supabaseAdmin
       .from("profiles")
       .select(`
@@ -36,7 +38,7 @@ export async function authMiddleware(req, res, next) {
         church_id,
         is_member
       `)
-      .eq("auth_user_id", authUser.id) // ✅ always use auth_user_id
+      .eq("auth_user_id", authUser.id)
       .maybeSingle();
 
     if (profileError) {
@@ -55,7 +57,7 @@ export async function authMiddleware(req, res, next) {
     const { data: member, error: memberError } = await supabaseAdmin
       .from("members")
       .select("id, role_name, active")
-      .eq("profile_id", profile.id)      // ✅ use real profile.id
+      .eq("profile_id", profile.id)
       .eq("church_id", profile.church_id)
       .maybeSingle();
 
@@ -70,15 +72,25 @@ export async function authMiddleware(req, res, next) {
 
     const isMember = !!profile.is_member;
 
+    /* ---------- Role + Permissions ---------- */
+    const role = normalizeRole(
+      isMember ? member?.role_name || "member" : "guest"
+    );
+
+    const permissions = getUserPermissions([role]);
+
     /* ---------- Attach user to request ---------- */
     req.user = {
-      id: profile.id,                     // profile ID is identity
-      member_id: member?.id ?? null,      // church membership ID
+      id: profile.id,
+      member_id: member?.id ?? null,
       email: profile.email ?? authUser.email,
       full_name: profile.full_name || "Guest",
-      role_name: isMember ? member?.role_name || "Member" : "Guest",
+      role_name: role,
       church_id: profile.church_id ?? null,
       is_member: isMember,
+      email_confirmed_at: authUser.email_confirmed_at,
+      // 🔥 NEW: permissions attached automatically
+      permissions,
     };
 
     console.log("✅ Middleware passed, req.user set:", req.user);

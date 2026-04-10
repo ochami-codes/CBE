@@ -1,92 +1,123 @@
 // backend/routes/attendance.js
 import express from "express";
-import { requireRole } from "../middleware/requireRole.js";
 
 const router = express.Router();
 
+/* =====================================================
+   Helpers
+===================================================== */
+function canRead(req, res) {
+  const { permissions, is_member } = req.user;
+
+  if (!is_member) {
+    res.status(403).json({ error: "Members only" });
+    return false;
+  }
+
+  if (!permissions.includes("access_attendance")) {
+    res.status(403).json({ error: "Forbidden" });
+    return false;
+  }
+
+  return true;
+}
+
+function canWrite(req, res) {
+  const { permissions, is_member } = req.user;
+
+  if (!is_member) {
+    res.status(403).json({ error: "Members only" });
+    return false;
+  }
+
+  if (!permissions.includes("manage_attendance")) {
+    res.status(403).json({ error: "Forbidden" });
+    return false;
+  }
+
+  return true;
+}
+
 /**
  * GET /attendance
- * Query params: department, date
- * Returns attendance records for a given department on a specific date
  */
-router.get(
-  "/",
-  
-  requireRole(["admin", "pastor", "youth_leader","children_leader"]),
-  async (req, res) => {
-    const supabase = req.supabase;
-    const { department, date } = req.query;
+router.get("/", async (req, res) => {
+  if (!canRead(req, res)) return;
 
-    if (!department || !date) {
-      return res.status(400).json({ error: "department and date are required" });
-    }
+  const supabase = req.supabase;
+  const { department, date } = req.query;
+  const { church_id } = req.user;
 
-    try {
-      const { data, error } = await supabase
-        .from("attendance")
-        .select("member_id, present, notes, service_type")
-        .eq("department", department)
-        .eq("date", date);
-
-      if (error) throw error;
-
-      res.json({ records: data ?? [] });
-    } catch (err) {
-      console.error("Fetch attendance error:", err);
-      res.status(500).json({ error: "Failed to fetch attendance" });
-    }
+  if (!department || !date) {
+    return res.status(400).json({ error: "department and date are required" });
   }
-);
+
+  try {
+    const { data, error } = await supabase
+      .from("attendance")
+      .select("member_id, present, notes, service_type")
+      .eq("department", department)
+      .eq("date", date)
+      .eq("church_id", church_id); // 🔒 important
+
+    if (error) throw error;
+
+    res.json({ records: data ?? [] });
+  } catch (err) {
+    console.error("Fetch attendance error:", err);
+    res.status(500).json({ error: "Failed to fetch attendance" });
+  }
+});
+
 /**
  * POST /attendance
- * body: { records: [{ member_id, department, date, present, notes?, service_type? }] }
- * UPSERT attendance records
  */
-router.post(
-  "/",
-  
-  requireRole(["admin", "pastor", "children_leader", "youth_leader"]),
-  async (req, res) => {
-    const supabase = req.supabase;
-    const { records } = req.body;
+router.post("/", async (req, res) => {
+  if (!canWrite(req, res)) return;
 
-    if (!Array.isArray(records) || records.length === 0) {
-      return res.status(400).json({ error: "records array is required" });
-    }
+  const supabase = req.supabase;
+  const { records } = req.body;
+  const { church_id } = req.user;
 
-    const payload = records.map((r) => ({
-      member_id: r.member_id,
-      department: r.department,
-      date: r.date,
-      present: !!r.present,
-      notes: r.notes ?? null,
-      service_type: r.service_type ?? null,
-    }));
-
-    try {
-      const { error } = await supabase
-        .from("attendance")
-        .upsert(payload, {
-          onConflict: ["member_id", "department", "date"],
-        });
-
-      if (error) throw error;
-
-      res.json({ success: true, message: "Attendance saved successfully" });
-    } catch (err) {
-      console.error("Save attendance error:", err);
-      res.status(500).json({ error: "Failed to save attendance" });
-    }
+  if (!Array.isArray(records) || records.length === 0) {
+    return res.status(400).json({ error: "records array is required" });
   }
-);
+
+  const payload = records.map((r) => ({
+    member_id: r.member_id,
+    department: r.department,
+    date: r.date,
+    present: !!r.present,
+    notes: r.notes ?? null,
+    service_type: r.service_type ?? null,
+    church_id, // 🔒 enforce from auth
+  }));
+
+  try {
+    const { error } = await supabase
+      .from("attendance")
+      .upsert(payload, {
+        onConflict: ["member_id", "department", "date"],
+      });
+
+    if (error) throw error;
+
+    res.json({ success: true, message: "Attendance saved successfully" });
+  } catch (err) {
+    console.error("Save attendance error:", err);
+    res.status(500).json({ error: "Failed to save attendance" });
+  }
+});
+
 /**
  * GET /attendance/monthly-summary
- * Query params: department, month (YYYY-MM)
- * Returns total present % for each member in a month
  */
-router.get("/monthly-summary", requireRole(["Admin", "Pastor", "Youth_leader"]), async (req, res) => {
+router.get("/monthly-summary", async (req, res) => {
+  if (!canRead(req, res)) return;
+
   const supabase = req.supabase;
   const { department, month } = req.query;
+  const { church_id } = req.user;
 
   if (!department || !month) {
     return res.status(400).json({ error: "department and month are required" });
@@ -97,21 +128,26 @@ router.get("/monthly-summary", requireRole(["Admin", "Pastor", "Youth_leader"]),
       .from("attendance")
       .select("member_id, present, date")
       .eq("department", department)
-      .ilike("date", `${month}-%`); // matches YYYY-MM-DD
+      .eq("church_id", church_id)
+      .ilike("date", `${month}-%`);
 
     if (error) throw error;
 
-    // Aggregate attendance %
     const summary = {};
+
     data.forEach((r) => {
-      if (!summary[r.member_id]) summary[r.member_id] = { present: 0, total: 0 };
+      if (!summary[r.member_id]) {
+        summary[r.member_id] = { present: 0, total: 0 };
+      }
       summary[r.member_id].total += 1;
       if (r.present) summary[r.member_id].present += 1;
     });
 
     const result = Object.entries(summary).map(([member_id, stats]) => ({
       member_id,
-      percentage: stats.total ? (stats.present / stats.total) * 100 : 0,
+      percentage: stats.total
+        ? (stats.present / stats.total) * 100
+        : 0,
     }));
 
     res.json({ summary: result });
@@ -123,12 +159,13 @@ router.get("/monthly-summary", requireRole(["Admin", "Pastor", "Youth_leader"]),
 
 /**
  * GET /attendance/yearly-summary
- * Query params: department, year (YYYY)
- * Returns attendance % per month for a given year
  */
-router.get("/yearly-summary", requireRole(["Admin", "Pastor", "Youth_leader"]), async (req, res) => {
+router.get("/yearly-summary", async (req, res) => {
+  if (!canRead(req, res)) return;
+
   const supabase = req.supabase;
   const { department, year } = req.query;
+  const { church_id } = req.user;
 
   if (!department || !year) {
     return res.status(400).json({ error: "department and year are required" });
@@ -139,22 +176,29 @@ router.get("/yearly-summary", requireRole(["Admin", "Pastor", "Youth_leader"]), 
       .from("attendance")
       .select("member_id, present, date")
       .eq("department", department)
-      .ilike("date", `${year}-%`); // matches YYYY-MM-DD
+      .eq("church_id", church_id)
+      .ilike("date", `${year}-%`);
 
     if (error) throw error;
 
-    // Aggregate per month
     const summary = {};
+
     data.forEach((r) => {
-      const month = r.date.slice(5, 7); // MM
-      if (!summary[month]) summary[month] = { present: 0, total: 0 };
+      const month = r.date.slice(5, 7);
+
+      if (!summary[month]) {
+        summary[month] = { present: 0, total: 0 };
+      }
+
       summary[month].total += 1;
       if (r.present) summary[month].present += 1;
     });
 
     const result = Object.entries(summary).map(([month, stats]) => ({
       month,
-      percentage: stats.total ? (stats.present / stats.total) * 100 : 0,
+      percentage: stats.total
+        ? (stats.present / stats.total) * 100
+        : 0,
     }));
 
     res.json({ summary: result });

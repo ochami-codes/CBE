@@ -1,11 +1,14 @@
 import express from "express";
-import { requireRole } from "../middleware/requireRole.js";
 
 const router = express.Router();
+
+/* ---------------- Permission Helper ---------------- */
+function requirePermission(user, permission) {
+  return user?.permissions?.includes(permission);
+}
+
 /**
  * GET /members
- * Join members + profiles + departments
- * Filter by department if provided
  */
 router.get("/", async (req, res) => {
   const supabase = req.supabase;
@@ -13,8 +16,7 @@ router.get("/", async (req, res) => {
   const { department } = req.query;
 
   try {
-    // ---------------- Build base query ----------------
-    let query = supabase
+    let { data, error } = await supabase
       .from("members")
       .select(`
         id,
@@ -38,8 +40,6 @@ router.get("/", async (req, res) => {
       .eq("church_id", church_id)
       .order("full_name", { ascending: true, foreignTable: "profiles" });
 
-    // ---------------- Optional: filter by department ----------------
-    let { data, error } = await query;
     if (error) throw error;
 
     if (department) {
@@ -50,7 +50,6 @@ router.get("/", async (req, res) => {
       );
     }
 
-    // ---------------- Normalize response ----------------
     const members = (data || []).map((m) => ({
       id: m.id,
       profile_id: m.profile_id,
@@ -58,11 +57,8 @@ router.get("/", async (req, res) => {
       phone: m.profiles?.phone || null,
       gender: m.profiles?.gender || null,
       is_system_user: m.profiles?.is_system_user || false,
-
-      // Always array of department names
       department:
         m.member_departments?.map((md) => md.departments?.name) || [],
-
       role_name: m.role_name,
       active: m.active,
       created_at: m.created_at,
@@ -74,98 +70,91 @@ router.get("/", async (req, res) => {
     return res.status(500).json({ message: "Failed to fetch members" });
   }
 });
-/**
- * ADD / UPSERT MEMBER
- * POST /members
- * Expects: { full_name, department (code), phone, role_name? }
- */
-/**
- * Normalize Kenyan phone numbers to 2547XXXXXXXX format
- */
+
+/* ---------------- Phone Normalization ---------------- */
 function normalizePhone(phone) {
   if (!phone) return null;
 
-  phone = phone.replace(/\D/g, ""); // remove non-digits
+  phone = phone.replace(/\D/g, "");
 
   if (phone.startsWith("0")) {
-    // 07xxxxxxxx → 2547xxxxxxxx
     phone = "254" + phone.slice(1);
   } else if (phone.startsWith("7") && phone.length === 9) {
-    // 7xxxxxxxx → 2547xxxxxxxx
     phone = "254" + phone;
   } else if (phone.startsWith("+254")) {
-    // +2547xxxxxxxx → 2547xxxxxxxx
     phone = phone.slice(1);
   }
-  // else assume it's already normalized
+
   return phone;
 }
 
-router.post(
-  "/",
-  requireRole([
-    "Admin",
-    "Pastor",
-    "Youth_leader",
-    "Choir_leader",
-    "Amo_leader",
-    "Deaconry_leader",
-    "Alo_leader",
-  ]),
-  async (req, res) => {
-    const supabase = req.supabase;
-    const { church_id } = req.user;
-
-    const {
-      profile_id,
-      full_name,
-      phone,
-      department,
-      gender,
-      role_name = "Member",
-    } = req.body;
-
-    if (!department) {
-      return res.status(400).json({ message: "Department is required" });
-    }
-
-    if (!profile_id && (!full_name || !phone)) {
-      return res.status(400).json({
-        message: "Provide profile_id OR full_name + phone",
-      });
-    }
-
-    const normalizedPhone = normalizePhone(phone);
-
-    try {
-      const { data, error } = await supabase.rpc("add_member_rpc", {
-        p_church_id: church_id,
-        p_profile_id: profile_id || null,
-        p_full_name: full_name || null,
-        p_gender: gender || null,
-        p_phone: normalizedPhone || null,
-        p_department_code: department,
-        p_role_name: role_name,
-      });
-
-      if (error) {
-        return res.status(400).json({ message: error.message });
-      }
-
-      return res.status(201).json(data);
-    } catch (err) {
-      console.error("RPC error:", err);
-      return res.status(500).json({ message: "Failed to add member" });
-    }
-  }
-);
 /**
- * UPDATE MEMBER
+ * POST /members
  */
-router.put("/:id", requireRole(["Admin"]), async (req, res) => {
+router.post("/", async (req, res) => {
+  const supabase = req.supabase;
+  const { church_id } = req.user;
+
+  /* 🔒 Permission check (NEW PATTERN) */
+  if (!requirePermission(req.user, "manage_members")) {
+    return res.status(403).json({ message: "Forbidden" });
+  }
+
+  const {
+    profile_id,
+    full_name,
+    phone,
+    department,
+    gender,
+    role_name = "member",
+  } = req.body;
+
+  if (!department) {
+    return res.status(400).json({ message: "Department is required" });
+  }
+
+  if (!profile_id && (!full_name || !phone)) {
+    return res.status(400).json({
+      message: "Provide profile_id OR full_name + phone",
+    });
+  }
+
+  const normalizedPhone = normalizePhone(phone);
+
+  try {
+    const { data, error } = await supabase.rpc("add_member_rpc", {
+      p_church_id: church_id,
+      p_profile_id: profile_id || null,
+      p_full_name: full_name || null,
+      p_gender: gender || null,
+      p_phone: normalizedPhone || null,
+      p_department_code: department,
+      p_role_name: role_name,
+    });
+
+    if (error) {
+      return res.status(400).json({ message: error.message });
+    }
+
+    return res.status(201).json(data);
+  } catch (err) {
+    console.error("RPC error:", err);
+    return res.status(500).json({ message: "Failed to add member" });
+  }
+});
+
+/**
+ * PUT /members/:id
+ */
+router.put("/:id", async (req, res) => {
   const supabase = req.supabase;
   const { id } = req.params;
   const { church_id } = req.user;
+
+  /* 🔒 Admin-level action */
+  if (!requirePermission(req.user, "access_admin_dashboard")) {
+    return res.status(403).json({ message: "Admins only" });
+  }
 
   const { full_name, department, role_name, email } = req.body;
 
@@ -193,36 +182,39 @@ router.put("/:id", requireRole(["Admin"]), async (req, res) => {
     return res.status(500).json({ message: "Failed to update member" });
   }
 });
+
 /**
- * DELETE MEMBER
+ * DELETE /members/:id
  */
-router.delete(
-  "/:id",
-  
-  requireRole(["Admin", "Pastor", "Youth_leader", "Deaconry_leader", "Amo_leader", "Alo_leader", "Choir_leader"]),
-  async (req, res) => {
-    const supabase = req.supabase;
-    const { id } = req.params;
-    const { church_id } = req.user;
+router.delete("/:id", async (req, res) => {
+  const supabase = req.supabase;
+  const { id } = req.params;
+  const { church_id } = req.user;
 
-    try {
-      const { error } = await supabase
-        .from("members")
-        .delete()
-        .eq("id", id)
-        .eq("church_id", church_id);
-
-      if (error) throw error;
-
-      return res.json({ message: "Member removed successfully" });
-    } catch (err) {
-      console.error("Delete member error:", err);
-      return res.status(500).json({ message: "Failed to remove member" });
-    }
+  /* 🔒 Permission check */
+  if (!requirePermission(req.user, "manage_members")) {
+    return res.status(403).json({ message: "Forbidden" });
   }
-);
 
-// Search profiles
+  try {
+    const { error } = await supabase
+      .from("members")
+      .delete()
+      .eq("id", id)
+      .eq("church_id", church_id);
+
+    if (error) throw error;
+
+    return res.json({ message: "Member removed successfully" });
+  } catch (err) {
+    console.error("Delete member error:", err);
+    return res.status(500).json({ message: "Failed to remove member" });
+  }
+});
+
+/**
+ * GET /members/profiles/search
+ */
 router.get("/profiles/search", async (req, res) => {
   const supabase = req.supabase;
   const { church_id } = req.user;
@@ -250,4 +242,3 @@ router.get("/profiles/search", async (req, res) => {
 });
 
 export default router;
-

@@ -14,6 +14,7 @@ export const ROLE_PERMISSIONS = {
   guest: [],
 
   admin: [
+    /* UI access */
     "access_admin_dashboard",
     "access_pastor_dashboard",
     "access_youth_dashboard",
@@ -26,53 +27,103 @@ export const ROLE_PERMISSIONS = {
     "access_clerk_dashboard",
     "access_s_school_dashboard",
     "access_media_dashboard",
+
+    /* SYSTEM ACTIONS (important) */
+    "manage_members",
+    "delete_members",
+    "update_members",
+    "approve_requests",
+    "manage_events",
+    "manage_departments",
+    "view_reports",
+    "manage_roles",
+    "access_role_requests",
   ],
 
   pastor: [
     "access_pastor_dashboard",
     "access_media_dashboard",
+
+    /* actions */
+    "manage_members",
+    "approve_requests",
+    "manage_events",
   ],
 
   treasurer: [
     "access_treasury_dashboard",
+
+    /* actions */
+    "view_reports",
+    "manage_finances",
   ],
 
   youth_leader: [
     "access_youth_dashboard",
+
+    /* actions */
     "manage_youth",
+    "manage_members",
   ],
 
   children_leader: [
     "access_children_dashboard",
+
+    /* actions */
     "manage_children",
   ],
 
   communication_leader: [
     "access_media_dashboard",
+
+    /* actions */
+    "manage_media",
   ],
 
   choir_leader: [
     "access_choir_dashboard",
+
+    /* actions */
+    "manage_choir",
+    "manage_members",
   ],
 
   s_school_leader: [
     "access_s_school_dashboard",
+
+    /* actions */
+    "manage_s_school",
   ],
 
   clerk: [
     "access_clerk_dashboard",
+
+    /* actions */
+    "manage_records",
   ],
 
   amo_leader: [
     "access_amo_dashboard",
+
+    /* actions */
+    "manage_amo",
+    "manage_members",
   ],
 
   alo_leader: [
     "access_alo_dashboard",
+
+    /* actions */
+    "manage_alo",
+    "manage_members"
   ],
 
   deaconry_leader: [
     "access_deaconry_dashboard",
+
+    /* actions */
+    "manage_deaconry",
+    "manage_members",
   ],
 
   member: [
@@ -80,7 +131,6 @@ export const ROLE_PERMISSIONS = {
     "view_content",
   ],
 };
-
 // ------------------------------------
 // ROLE LABELS
 // ------------------------------------

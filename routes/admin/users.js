@@ -1,16 +1,31 @@
 // routes/admin/users.js
 import express from "express";
-import requireAdmin from "../../middleware/requireAdmin.js";
 
 const router = express.Router();
+
+/**
+ * Helper: check permission
+ */
+function requirePermission(permission) {
+  return (req, res, next) => {
+    if (!req.user) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
+    if (!req.user.permissions?.includes(permission)) {
+      return res.status(403).json({ message: "Forbidden" });
+    }
+
+    next();
+  };
+}
 
 /**
  * POST /admin/users/:id/deactivate
  */
 router.post(
   "/:id/deactivate",
-  
-  requireAdmin,
+  requirePermission("manage_users"),
   async (req, res) => {
     const supabase = req.supabase;
     const targetUserId = req.params.id;
@@ -25,7 +40,7 @@ router.post(
     }
 
     try {
-      // 1️⃣ Load member record (authority source)
+      // 1️⃣ Load member record
       const { data: member, error: fetchError } = await supabase
         .from("members")
         .select("id, active")
@@ -66,11 +81,13 @@ router.post(
     }
   }
 );
-//activate users
+
+/**
+ * POST /admin/users/:id/activate
+ */
 router.post(
   "/:id/activate",
-  
-  requireAdmin,
+  requirePermission("manage_users"),
   async (req, res) => {
     const supabase = req.supabase;
     const targetUserId = req.params.id;
