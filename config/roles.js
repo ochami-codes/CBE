@@ -29,6 +29,7 @@ export const ROLE_PERMISSIONS = {
     "access_media_dashboard",
 
     /* SYSTEM ACTIONS (important) */
+    "manage_users",
     "manage_members",
     "delete_members",
     "update_members",

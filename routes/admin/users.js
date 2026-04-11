@@ -65,7 +65,8 @@ router.post(
           active: false,
           deactivated_at: new Date().toISOString(),
         })
-        .eq("id", member.id);
+        .eq("id", member.id)
+        .eq("church_id", churchId);
 
       if (updateError) throw updateError;
 
@@ -117,7 +118,8 @@ router.post(
           active: true,
           deactivated_at: null,
         })
-        .eq("id", member.id);
+        .eq("id", member.id)
+        .eq("church_id", churchId);
 
       if (updateError) throw updateError;
 
