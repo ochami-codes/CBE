@@ -134,4 +134,35 @@ router.post("/:id/reject", async (req, res) => {
   }
 });
 
+/**
+ * PUT /admin/role-requests/members/:id/role
+ * Directly update a member's role (admin action)
+ */
+router.put("/members/:id/role", async (req, res) => {
+  if (!requireRoleManagement(req, res)) return;
+
+  const supabase = req.supabase;
+  const { id } = req.params;
+  const { role_name } = req.body;
+  const churchId = req.user.church_id;
+
+  if (!role_name) {
+    return res.status(400).json({ error: "Role is required" });
+  }
+
+  try {
+    const { error } = await supabase
+      .from("members")
+      .update({ role_name })
+      .eq("id", id)
+      .eq("church_id", churchId);
+
+    if (error) throw error;
+
+    return res.json({ message: "Role updated successfully" });
+  } catch (err) {
+    console.error("Manual role update error:", err);
+    return res.status(500).json({ error: "Failed to update role" });
+  }
+});
 export default router;
