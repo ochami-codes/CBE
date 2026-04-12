@@ -131,7 +131,7 @@ router.post("/read", async (req, res) => {
 // ------------------------------
 router.get("/leaders", async (req, res) => {
   const supabase = req.supabase;
-  const { church_id } = req.user;
+  const { church_id, profile_id:currentUserId } = req.user;
 
   try {
     const { data, error } = await supabase
@@ -146,8 +146,8 @@ router.get("/leaders", async (req, res) => {
         )
       `)
       .eq("church_id", church_id)
-      .eq("role.is_leader", true);
-
+      .eq("role.is_leader", true)
+      .neq("profile_id", currentUserId);
     if (error) throw error;
 
     const grouped = {};
