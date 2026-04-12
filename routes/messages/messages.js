@@ -140,16 +140,16 @@ const { data, error } = await supabase
   .select(`
     id,
     full_name,
-    role:roles!inner (
+    church_id,
+    role:roles (
       id,
       name,
       is_leader
     )
   `)
-  .eq("church_id", church_id)
-  .eq("role.is_leader", true);
-    if (error) throw error;
+  .eq("church_id", church_id);
 
+console.log(data);
     // Group by role
     const grouped = {};
 
