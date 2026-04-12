@@ -135,20 +135,19 @@ router.get("/leaders", async (req, res) => {
 
   try {
     // Get ONLY leaders directly from DB
-    const { data, error } = await supabase
-      .from("profiles")
-      .select(`
-        id,
-        full_name,
-        role:roles (
-          id,
-          name,
-          is_leader
-        )
-      `)
-      .eq("church_id", church_id)
-      .eq("roles.is_leader", true); // 👈 KEY CHANGE
-
+const { data, error } = await supabase
+  .from("profiles")
+  .select(`
+    id,
+    full_name,
+    role:roles!inner (
+      id,
+      name,
+      is_leader
+    )
+  `)
+  .eq("church_id", church_id)
+  .eq("role.is_leader", true);
     if (error) throw error;
 
     // Group by role
