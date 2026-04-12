@@ -134,46 +134,41 @@ router.get("/leaders", async (req, res) => {
   const { church_id } = req.user;
 
   try {
-    // Get ONLY leaders directly from DB
-const { data, error } = await supabase
-  .from("profiles")
-  .select(`
-    id,
-    full_name,
-    church_id,
-    role:roles (
-      id,
-      name,
-      is_leader
-    )
-  `)
-  .eq("church_id", church_id);
+    const { data, error } = await supabase
+      .from("members")
+      .select(`
+        profile_id,
+        profiles ( full_name ),
+        role:roles!inner (
+          id,
+          name,
+          is_leader
+        )
+      `)
+      .eq("church_id", church_id)
+      .eq("role.is_leader", true);
 
-console.log(data);
-    // Group by role
+    if (error) throw error;
+
     const grouped = {};
 
-    data.forEach((user) => {
-      const roleName = user.role?.name;
+    data.forEach((m) => {
+      const roleName = m.role?.name;
+      const name = m.profiles?.full_name;
 
-      if (!roleName) return;
+      if (!roleName || !name) return;
 
       if (!grouped[roleName]) {
-        grouped[roleName] = {
-          role: roleName,
-          users: [],
-        };
+        grouped[roleName] = { role: roleName, users: [] };
       }
 
       grouped[roleName].users.push({
-        id: user.id,
-        name: user.full_name,
+        id: m.profile_id,
+        name,
       });
     });
 
-    res.json({
-      roles: Object.values(grouped),
-    });
+    res.json({ roles: Object.values(grouped) });
   } catch (err) {
     console.error("❌ GET /messages/leaders error:", err);
     res.status(500).json({ error: err.message });
