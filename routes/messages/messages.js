@@ -131,7 +131,7 @@ router.post("/read", async (req, res) => {
 // ------------------------------
 router.get("/leaders", async (req, res) => {
   const supabase = req.supabase;
-  const { church_id, profile_id:currentUserId } = req.user;
+  const { church_id, id:currentUserId } = req.user;
 
   try {
     const { data, error } = await supabase
