@@ -143,7 +143,9 @@ router.get("/conversation/:thread_id", async (req, res) => {
   }
 
   try {
-    // 1. Fetch messages ONLY if user is part of them
+    // =====================================
+    // 1. Fetch messages in thread
+    // =====================================
     const { data, error } = await supabase
       .from("messages")
       .select(`
@@ -161,14 +163,16 @@ router.get("/conversation/:thread_id", async (req, res) => {
           is_read
         )
       `)
-      .or(`id.eq.${thread_id},parent_message_id.eq.${thread_id}`)
+      .eq("parent_message_id", thread_id) // ✅ SIMPLIFIED
       .eq("church_id", church_id)
       .eq("recipients.recipient_user_id", profile_id)
       .order("created_at", { ascending: true });
 
     if (error) throw error;
 
-    // 2. Mark unread messages as read
+    // =====================================
+    // 2. Mark unread as read
+    // =====================================
     const unreadMessageIds =
       data
         ?.filter(
