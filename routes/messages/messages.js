@@ -190,7 +190,7 @@ router.get("/conversation/:thread_id", async (req, res) => {
           read_at: new Date().toISOString(),
         })
         .in("message_id", unreadMessageIds)
-        .eq("recipient_user_id", profile_id);
+      //  .eq("recipient_user_id", profile_id);
     }
 
     res.json({ messages: data || [] });
