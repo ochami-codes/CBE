@@ -1,51 +1,168 @@
 import express from "express";
-
+import { pool } from "../../db.js";
 const router = express.Router();
 
 // ------------------------------
 // POST /api/messages
 // Send a message (role-based or direct) with notifications
 // ------------------------------
+
 router.post("/", async (req, res) => {
-  const supabase = req.supabase;
+  const client = await pool.connect();
+
   const { id: profile_id, church_id } = req.user;
+  const { content, target_role, recipient_profile_id, parent_message_id } = req.body;
 
-  const { content, target_role_id, recipient_profile_id, parent_message_id } = req.body;
-
-  // ---------- Validation ----------
-  if (!content?.trim()) {
-    return res.status(400).json({ error: "Message cannot be empty" });
-  }
-
-if (!parent_message_id && !target_role_id && !recipient_profile_id) {
-  return res.status(400).json({
-    error: "Provide a thread, target role ID, or recipient profile ID",
-  });
-}
   try {
-    const { data, error } = await supabase.rpc("send_message_with_notifications", {
-      p_sender_profile_id: profile_id,
-      p_church_id: church_id,
-      p_content: content,
-      p_target_role_id: target_role_id || null,
-      p_recipient_profile_id: recipient_profile_id || null,
-      p_parent_message_id: parent_message_id || null,
-    });
+    await client.query("BEGIN");
 
-    if (error) throw error;
+    // =====================================
+    // 1. VALIDATION
+    // =====================================
+    if (!content?.trim()) {
+      throw new Error("Message cannot be empty");
+    }
+
+    if (!parent_message_id && !target_role && !recipient_profile_id) {
+      throw new Error("Provide thread, role, or recipient");
+    }
+
+    let recipients = new Set();
+    let root_id = null;
+
+    // =====================================
+    // 2. REPLY → inherit recipients
+    // =====================================
+    if (parent_message_id) {
+      const parentRes = await client.query(
+        `SELECT id, parent_message_id
+         FROM messages
+         WHERE id = $1`,
+        [parent_message_id]
+      );
+
+      const parent = parentRes.rows[0];
+      if (!parent) throw new Error("Parent not found");
+
+      root_id = parent.parent_message_id || parent.id;
+
+      const recRes = await client.query(
+        `SELECT recipient_user_id
+         FROM message_recipients
+         WHERE message_id = $1`,
+        [root_id]
+      );
+
+      recRes.rows.forEach((r) => recipients.add(r.recipient_user_id));
+    }
+
+    // =====================================
+    // 3. DIRECT
+    // =====================================
+    else if (recipient_profile_id) {
+      recipients.add(recipient_profile_id);
+    }
+
+    // =====================================
+    // 4. ROLE
+    // =====================================
+    else if (target_role) {
+      const roleRes = await client.query(
+        `SELECT p.id
+         FROM profiles p
+         JOIN roles r ON p.role_id = r.id
+         WHERE r.name = $1
+         AND p.church_id = $2`,
+        [target_role, church_id]
+      );
+
+      roleRes.rows.forEach((r) => recipients.add(r.id));
+    }
+
+    // =====================================
+    // 5. ALWAYS include sender
+    // =====================================
+    recipients.add(profile_id);
+
+    // =====================================
+    // 6. INSERT MESSAGE
+    // =====================================
+    const msgRes = await client.query(
+      `INSERT INTO messages (sender_id, church_id, content, parent_message_id)
+       VALUES ($1, $2, $3, $4)
+       RETURNING id`,
+      [profile_id, church_id, content, root_id]
+    );
+
+    const message_id = msgRes.rows[0].id;
+
+    // =====================================
+    // 7. NEW THREAD → self root
+    // =====================================
+    if (!root_id) {
+      await client.query(
+        `UPDATE messages
+         SET parent_message_id = id
+         WHERE id = $1`,
+        [message_id]
+      );
+
+      root_id = message_id;
+    }
+
+    // =====================================
+    // 8. INSERT RECIPIENTS
+    // =====================================
+    for (let userId of recipients) {
+      await client.query(
+        `INSERT INTO message_recipients (message_id, recipient_user_id, church_id)
+         VALUES ($1, $2, $3)`,
+        [message_id, userId, church_id]
+      );
+    }
+
+    // =====================================
+    // 9. NOTIFICATIONS
+    // =====================================
+    for (let userId of recipients) {
+      if (userId === profile_id) continue;
+
+      await client.query(
+        `INSERT INTO notifications (
+          user_id, church_id, type, title, message, related_id, related_type
+        )
+        SELECT auth_user_id, $1, 'message', 'New Message', $2, $3, 'message'
+        FROM profiles
+        WHERE id = $4`,
+        [church_id, content, message_id, userId]
+      );
+    }
+
+    // =====================================
+    // ✅ COMMIT
+    // =====================================
+    await client.query("COMMIT");
 
     res.json({
       success: true,
-      message_id: data?.[0]?.message_id ?? null,
+      message_id,
+      thread_id: root_id,
     });
+
   } catch (err) {
-    console.error("❌ POST /api/messages error:", err);
+    // ❌ ROLLBACK EVERYTHING
+    await client.query("ROLLBACK");
+
+    console.error("❌ TRANSACTION FAILED:", err);
     res.status(500).json({ error: err.message });
+
+  } finally {
+    client.release();
   }
 });
 // ------------------------------
 // GET /api/messages/inbox
-// ------------------------------
+// -----------------------------
 router.get("/inbox", async (req, res) => {
   const supabase = req.supabase;
   const { id: profile_id, church_id } = req.user;
