@@ -201,6 +201,77 @@ router.post("/", async (req, res) => {
     client.release();
   }
 });
+
+router.get("/inbox", async (req, res) => {
+  const { id: profile_id, church_id } = req.user;
+
+  try {
+    const result = await pool.query(
+      `
+      SELECT
+        t.id AS thread_id,
+        t.type,
+        t.role_name,
+
+        m.content AS last_message,
+        m.created_at AS last_message_at,
+
+        -- for direct chats: get the other user
+        CASE
+          WHEN t.type = 'direct' THEN p.full_name
+          ELSE NULL
+        END AS other_user_name,
+
+        -- unread messages count
+        COUNT(m2.id) FILTER (
+          WHERE m2.created_at > COALESCE(tr.last_read_at, '1970-01-01')
+          AND m2.sender_id != $1
+        ) AS unread_count
+
+      FROM thread_participants tp
+      JOIN threads t
+        ON t.id = tp.thread_id
+
+      LEFT JOIN messages m
+        ON m.id = t.last_message_id
+
+      -- get the "other user" in direct chats
+      LEFT JOIN thread_participants tp2
+        ON tp2.thread_id = t.id
+        AND tp2.user_id != $1
+
+      LEFT JOIN profiles p
+        ON p.id = tp2.user_id
+
+      -- read tracking
+      LEFT JOIN thread_reads tr
+        ON tr.thread_id = t.id
+        AND tr.user_id = $1
+
+      -- all messages for unread count
+      LEFT JOIN messages m2
+        ON m2.thread_id = t.id
+
+      WHERE tp.user_id = $1
+        AND t.church_id = $2
+
+      GROUP BY
+        t.id, t.type, t.role_name,
+        m.id,
+        p.full_name,
+        tr.last_read_at
+
+      ORDER BY t.last_message_at DESC NULLS LAST
+      `,
+      [profile_id, church_id]
+    );
+
+    res.json({ inbox: result.rows });
+  } catch (err) {
+    console.error("❌ INBOX ERROR:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
 /* =========================================================
    GET /api/messages/conversation/:thread_id
 ========================================================= */
