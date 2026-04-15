@@ -22,58 +22,99 @@ router.post("/", async (req, res) => {
 
     let finalThreadId = thread_id;
 
-    /* -----------------------------
-       1. CREATE THREAD (if needed)
-    ----------------------------- */
+    /* =====================================================
+       1. FIND OR CREATE THREAD
+    ===================================================== */
     if (!finalThreadId) {
-      const threadType = recipient_profile_id
-        ? "direct"
-        : target_role
-        ? "role"
-        : "group";
-
-      const threadRes = await client.query(
-        `INSERT INTO threads (church_id, type)
-         VALUES ($1, $2)
-         RETURNING id`,
-        [church_id, threadType]
-      );
-
-      finalThreadId = threadRes.rows[0].id;
-
-      const participants = new Set([profile_id]);
-
-      // Direct message
+      // ---------- DIRECT ----------
       if (recipient_profile_id) {
-        participants.add(recipient_profile_id);
-      }
-
-      // Role-based message
-      if (target_role) {
-        const roleRes = await client.query(
-          `SELECT p.id
-           FROM profiles p
-           JOIN roles r ON p.role_id = r.id
-           WHERE r.name = $1 AND p.church_id = $2`,
-          [target_role, church_id]
+        const existing = await client.query(
+          `SELECT t.id
+           FROM threads t
+           JOIN thread_participants tp1 ON tp1.thread_id = t.id
+           JOIN thread_participants tp2 ON tp2.thread_id = t.id
+           WHERE t.type = 'direct'
+             AND t.church_id = $1
+             AND tp1.user_id = $2
+             AND tp2.user_id = $3
+           LIMIT 1`,
+          [church_id, profile_id, recipient_profile_id]
         );
 
-        roleRes.rows.forEach((r) => participants.add(r.id));
+        if (existing.rows.length > 0) {
+          finalThreadId = existing.rows[0].id;
+        }
       }
 
-      // Insert participants
-      for (const userId of participants) {
-        await client.query(
-          `INSERT INTO thread_participants (thread_id, user_id)
-           VALUES ($1, $2)`,
-          [finalThreadId, userId]
+      // ---------- ROLE ----------
+      else if (target_role) {
+        const existing = await client.query(
+          `SELECT id
+           FROM threads
+           WHERE type = 'role'
+             AND church_id = $1
+             AND role_name = $2
+           LIMIT 1`,
+          [church_id, target_role]
         );
+
+        if (existing.rows.length > 0) {
+          finalThreadId = existing.rows[0].id;
+        }
+      }
+
+      // ---------- CREATE ----------
+      if (!finalThreadId) {
+        const threadType = recipient_profile_id
+          ? "direct"
+          : target_role
+          ? "role"
+          : "group";
+
+        const threadRes = await client.query(
+          `INSERT INTO threads (church_id, type, role_name)
+           VALUES ($1, $2, $3)
+           RETURNING id`,
+          [church_id, threadType, target_role || null]
+        );
+
+        finalThreadId = threadRes.rows[0].id;
+
+        const participants = new Set([profile_id]);
+
+        // direct
+        if (recipient_profile_id) {
+          participants.add(recipient_profile_id);
+        }
+
+        // role
+        if (target_role) {
+          const roleRes = await client.query(
+            `SELECT p.id
+             FROM profiles p
+             JOIN roles r ON p.role_id = r.id
+             WHERE r.name = $1 AND p.church_id = $2`,
+            [target_role, church_id]
+          );
+
+          roleRes.rows.forEach((r) => participants.add(r.id));
+        }
+
+        // insert participants (safe, no duplicates)
+        for (const userId of participants) {
+          await client.query(
+            `INSERT INTO thread_participants (thread_id, user_id)
+             VALUES ($1, $2)
+             ON CONFLICT (thread_id, user_id) DO NOTHING`,
+            [finalThreadId, userId]
+          );
+        }
       }
     }
 
-    /* -----------------------------
+    /* =====================================================
        2. INSERT MESSAGE
-    ----------------------------- */
+    ===================================================== */
     const msgRes = await client.query(
       `INSERT INTO messages (thread_id, sender_id, content)
        VALUES ($1, $2, $3)
@@ -92,9 +133,9 @@ router.post("/", async (req, res) => {
       [finalThreadId, profile_id]
     );
 
-    /* -----------------------------
+    /* =====================================================
        3. UPDATE THREAD META
-    ----------------------------- */
+    ===================================================== */
     await client.query(
       `UPDATE threads
        SET last_message_id = $1,
@@ -103,11 +144,21 @@ router.post("/", async (req, res) => {
       [message_id, created_at, finalThreadId]
     );
 
-    /* -----------------------------
-       4. NOTIFICATIONS
-    ----------------------------- */
+    /* =====================================================
+       4. NOTIFICATIONS (clean + no duplicates)
+    ===================================================== */
+
+    // get sender name once
+    const senderRes = await client.query(
+      `SELECT full_name FROM profiles WHERE id = $1`,
+      [profile_id]
+    );
+
+    const senderName = senderRes.rows[0]?.full_name || "Someone";
+
+    // get unique participants
     const participantsRes = await client.query(
-      `SELECT user_id
+      `SELECT DISTINCT user_id
        FROM thread_participants
        WHERE thread_id = $1
        AND user_id != $2`,
@@ -115,14 +166,23 @@ router.post("/", async (req, res) => {
     );
 
     for (const row of participantsRes.rows) {
+      const preview =
+        content.length > 40 ? content.slice(0, 40) + "..." : content;
+
       await client.query(
         `INSERT INTO notifications (
           user_id, church_id, type, title, message, related_id, related_type
         )
-        SELECT auth_user_id, $1, 'message', 'New Message', $2, $3, 'message'
+        SELECT auth_user_id, $1, 'message', $2, $3, $4, 'message'
         FROM profiles
-        WHERE id = $4`,
-        [church_id, content, message_id, row.user_id]
+        WHERE id = $5`,
+        [
+          church_id,
+          "New Message",
+          `${senderName}: ${preview}`,
+          message_id,
+          row.user_id,
+        ]
       );
     }
 
@@ -141,55 +201,6 @@ router.post("/", async (req, res) => {
     client.release();
   }
 });
-
-/* =========================================================
-   GET /api/messages/inbox
-========================================================= */
-router.get("/inbox", async (req, res) => {
-  const { id: profile_id, church_id } = req.user;
-
-  try {
-    const result = await pool.query(
-      `SELECT
-        t.id AS thread_id,
-        m.content AS last_message,
-        m.created_at AS last_message_at,
-        p.full_name AS other_user_name,
-
-        COUNT(m2.id) FILTER (
-          WHERE m2.created_at > COALESCE(tr.last_read_at, '1970-01-01')
-          AND m2.sender_id != $1
-        ) AS unread_count
-
-      FROM thread_participants tp
-      JOIN threads t ON tp.thread_id = t.id
-      LEFT JOIN messages m ON t.last_message_id = m.id
-
-      LEFT JOIN thread_participants tp2
-        ON tp2.thread_id = t.id AND tp2.user_id != $1
-
-      LEFT JOIN profiles p ON p.id = tp2.user_id
-
-      LEFT JOIN thread_reads tr
-        ON tr.thread_id = t.id AND tr.user_id = $1
-
-      LEFT JOIN messages m2 ON m2.thread_id = t.id
-
-      WHERE tp.user_id = $1
-        AND t.church_id = $2
-
-      GROUP BY t.id, m.id, p.full_name, tr.last_read_at
-      ORDER BY t.last_message_at DESC`,
-      [profile_id, church_id]
-    );
-
-    res.json({ inbox: result.rows });
-  } catch (err) {
-    console.error("❌ INBOX ERROR:", err);
-    res.status(500).json({ error: err.message });
-  }
-});
-
 /* =========================================================
    GET /api/messages/conversation/:thread_id
 ========================================================= */
