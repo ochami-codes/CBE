@@ -11,7 +11,7 @@ router.post("/", async (req, res) => {
   const client = await pool.connect();
 
   const { id: profile_id, church_id } = req.user;
-  const { content, recipient_profile_id, target_role, thread_id } = req.body;
+  const { content, recipient_profile_id, thread_id } = req.body;
 
   try {
     await client.query("BEGIN");
@@ -20,95 +20,50 @@ router.post("/", async (req, res) => {
       throw new Error("Message cannot be empty");
     }
 
+    if (!recipient_profile_id && !thread_id) {
+      throw new Error("Recipient is required for direct message");
+    }
+
     let finalThreadId = thread_id;
 
     /* =====================================================
-       1. FIND OR CREATE THREAD
+       1. FIND OR CREATE DIRECT THREAD ONLY
     ===================================================== */
     if (!finalThreadId) {
-      // ---------- DIRECT ----------
-      if (recipient_profile_id) {
-        const existing = await client.query(
-          `SELECT t.id
-           FROM threads t
-           JOIN thread_participants tp1 ON tp1.thread_id = t.id
-           JOIN thread_participants tp2 ON tp2.thread_id = t.id
-           WHERE t.type = 'direct'
-             AND t.church_id = $1
-             AND tp1.user_id = $2
-             AND tp2.user_id = $3
-           LIMIT 1`,
-          [church_id, profile_id, recipient_profile_id]
-        );
+      const existing = await client.query(
+        `
+        SELECT t.id
+        FROM threads t
+        JOIN thread_participants tp ON tp.thread_id = t.id
+        WHERE t.type = 'direct'
+          AND t.church_id = $1
+          AND tp.user_id IN ($2, $3)
+        GROUP BY t.id
+        HAVING COUNT(DISTINCT tp.user_id) = 2
+        LIMIT 1
+        `,
+        [church_id, profile_id, recipient_profile_id]
+      );
 
-        if (existing.rows.length > 0) {
-          finalThreadId = existing.rows[0].id;
-        }
-      }
-
-      // ---------- ROLE ----------
-      else if (target_role) {
-        const existing = await client.query(
-          `SELECT id
-           FROM threads
-           WHERE type = 'role'
-             AND church_id = $1
-             AND role_name = $2
-           LIMIT 1`,
-          [church_id, target_role]
-        );
-
-        if (existing.rows.length > 0) {
-          finalThreadId = existing.rows[0].id;
-        }
-      }
-
-      // ---------- CREATE ----------
-      if (!finalThreadId) {
-        const threadType = recipient_profile_id
-          ? "direct"
-          : target_role
-          ? "role"
-          : "group";
-
+      if (existing.rows.length > 0) {
+        finalThreadId = existing.rows[0].id;
+      } else {
         const threadRes = await client.query(
-          `INSERT INTO threads (church_id, type, role_name)
-           VALUES ($1, $2, $3)
+          `INSERT INTO threads (church_id, type)
+           VALUES ($1, 'direct')
            RETURNING id`,
-          [church_id, threadType, target_role || null]
+          [church_id]
         );
 
         finalThreadId = threadRes.rows[0].id;
 
-        const participants = new Set([profile_id]);
-
-        // direct
-        if (recipient_profile_id) {
-          participants.add(recipient_profile_id);
-        }
-
-        // role
-        if (target_role) {
-          const roleRes = await client.query(
-            `SELECT p.id
-             FROM profiles p
-             JOIN roles r ON p.role_id = r.id
-             WHERE r.name = $1 AND p.church_id = $2`,
-            [target_role, church_id]
-          );
-
-          roleRes.rows.forEach((r) => participants.add(r.id));
-        }
-
-        // insert participants (safe, no duplicates)
-        for (const userId of participants) {
-          await client.query(
-            `INSERT INTO thread_participants (thread_id, user_id)
-             VALUES ($1, $2)
-             ON CONFLICT (thread_id, user_id) DO NOTHING`,
-            [finalThreadId, userId]
-          );
-        }
+        // add both participants (safe insert)
+        await client.query(
+          `INSERT INTO thread_participants (thread_id, user_id)
+           VALUES ($1, $2), ($1, $3)
+           ON CONFLICT (thread_id, user_id) DO NOTHING`,
+          [finalThreadId, profile_id, recipient_profile_id]
+        );
       }
     }
 
@@ -145,10 +100,9 @@ router.post("/", async (req, res) => {
     );
 
     /* =====================================================
-       4. NOTIFICATIONS (clean + no duplicates)
+       4. NOTIFICATIONS (NO DUPLICATES)
     ===================================================== */
 
-    // get sender name once
     const senderRes = await client.query(
       `SELECT full_name FROM profiles WHERE id = $1`,
       [profile_id]
@@ -156,12 +110,11 @@ router.post("/", async (req, res) => {
 
     const senderName = senderRes.rows[0]?.full_name || "Someone";
 
-    // get unique participants
     const participantsRes = await client.query(
       `SELECT DISTINCT user_id
        FROM thread_participants
        WHERE thread_id = $1
-       AND user_id != $2`,
+         AND user_id != $2`,
       [finalThreadId, profile_id]
     );
 
@@ -202,6 +155,7 @@ router.post("/", async (req, res) => {
   }
 });
 
+// GET /inbox
 router.get("/inbox", async (req, res) => {
   const { id: profile_id, church_id } = req.user;
 
