@@ -32,7 +32,7 @@ import { supabaseAdmin } from "./supabaseClient.js";
 
 const app = express();
 
-/* ------------------ Global middleware ------------------ */
+/* ----------------- Global middleware ------------------ */
 app.use(cors());
 app.use(express.json());
 
