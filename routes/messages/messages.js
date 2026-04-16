@@ -169,7 +169,7 @@ router.get("/inbox", async (req, res) => {
 
         m.content AS last_message,
         m.created_at AS last_message_at,
-
+        p.id AS other_user_id,
         -- for direct chats: get the other user
         CASE
           WHEN t.type = 'direct' THEN p.full_name
