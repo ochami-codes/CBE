@@ -233,18 +233,28 @@ router.get("/conversation/:thread_id", async (req, res) => {
 
   try {
     const result = await pool.query(
-      `SELECT 
-        m.id,
-        m.content,
-        m.created_at,
-        m.sender_id,
-        p.full_name
-      FROM messages m
-      JOIN profiles p ON p.id = m.sender_id
-      JOIN threads t ON t.id = m.thread_id
-      WHERE m.thread_id = $1
-        AND t.church_id = $2
-      ORDER BY m.created_at ASC`,
+      `SELECT
+  m.id,
+  m.content,
+  m.created_at,
+  m.sender_id,
+
+  CASE
+    WHEN tr.last_read_at >= m.created_at THEN true
+    ELSE false
+  END AS is_read,
+
+  p.full_name
+
+FROM messages m
+JOIN profiles p ON p.id = m.sender_id
+
+LEFT JOIN thread_reads tr
+  ON tr.thread_id = m.thread_id
+ AND tr.user_id = $CURRENT_USER
+
+WHERE m.thread_id = $1
+ORDER BY m.created_at ASC`,
       [thread_id, church_id]
     );
 
@@ -279,9 +289,9 @@ router.post("/read", async (req, res) => {
 });
 
 /* =========================================================
-   GET /messages/leaders
+   GET /messages/users (leaders + members)
 ========================================================= */
-router.get("/leaders", async (req, res) => {
+router.get("/users", async (req, res) => {
   const supabase = req.supabase;
   const { church_id, id: currentUserId } = req.user;
 
@@ -291,14 +301,13 @@ router.get("/leaders", async (req, res) => {
       .select(`
         profile_id,
         profiles(full_name),
-        role:roles!inner (
+        role:roles (
           id,
           name,
           is_leader
         )
       `)
       .eq("church_id", church_id)
-      .eq("role.is_leader", true)
       .neq("profile_id", currentUserId);
 
     if (error) throw error;
@@ -306,28 +315,45 @@ router.get("/leaders", async (req, res) => {
     const grouped = {};
 
     data.forEach((m) => {
-      const roleName = m.role?.name;
+      const roleName = m.role?.name || "member";
+      const isLeader = m.role?.is_leader || false;
       const name = m.profiles?.full_name;
 
-      if (!roleName || !name) return;
+      if (!name) return;
 
-      if (!grouped[roleName]) {
-        grouped[roleName] = { role: roleName, users: [] };
+      // 🔑 group key (leaders separate from members)
+      const key = isLeader
+        ? `leader:${roleName}`
+        : "member";
+
+      if (!grouped[key]) {
+        grouped[key] = {
+          type: isLeader ? "leaders" : "members",
+          role: isLeader ? roleName : "member",
+          users: [],
+        };
       }
 
-      grouped[roleName].users.push({
+      grouped[key].users.push({
         id: m.profile_id,
         name,
       });
     });
 
-    res.json({ roles: Object.values(grouped) });
+    // Optional: sort groups (leaders first)
+    const sortedGroups = Object.values(grouped).sort((a, b) => {
+      if (a.type === "leaders" && b.type !== "leaders") return -1;
+      if (a.type !== "leaders" && b.type === "leaders") return 1;
+      return a.role.localeCompare(b.role);
+    });
+
+    res.json({ groups: sortedGroups });
+
   } catch (err) {
-    console.error("❌ GET /messages/leaders error:", err);
+    console.error("❌ GET /messages/users error:", err);
     res.status(500).json({ error: err.message });
   }
 });
-
 /* =========================================================
    GET /messages/unread-count
 ========================================================= */
