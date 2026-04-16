@@ -169,14 +169,11 @@ router.get("/inbox", async (req, res) => {
 
         m.content AS last_message,
         m.created_at AS last_message_at,
-        p.id AS other_user_id,
-        -- for direct chats: get the other user
-        CASE
-          WHEN t.type = 'direct' THEN p.full_name
-          ELSE NULL
-        END AS other_user_name,
 
-        -- unread messages count
+        -- ✅ include both id + name
+        p.id AS other_user_id,
+        p.full_name AS other_user_name,
+
         COUNT(m2.id) FILTER (
           WHERE m2.created_at > COALESCE(tr.last_read_at, '1970-01-01')
           AND m2.sender_id != $1
@@ -189,7 +186,7 @@ router.get("/inbox", async (req, res) => {
       LEFT JOIN messages m
         ON m.id = t.last_message_id
 
-      -- get the "other user" in direct chats
+      -- get the "other user"
       LEFT JOIN thread_participants tp2
         ON tp2.thread_id = t.id
         AND tp2.user_id != $1
@@ -197,12 +194,10 @@ router.get("/inbox", async (req, res) => {
       LEFT JOIN profiles p
         ON p.id = tp2.user_id
 
-      -- read tracking
       LEFT JOIN thread_reads tr
         ON tr.thread_id = t.id
         AND tr.user_id = $1
 
-      -- all messages for unread count
       LEFT JOIN messages m2
         ON m2.thread_id = t.id
 
@@ -210,8 +205,11 @@ router.get("/inbox", async (req, res) => {
         AND t.church_id = $2
 
       GROUP BY
-        t.id, t.type, t.role_name,
+        t.id,
+        t.type,
+        t.role_name,
         m.id,
+        p.id,                -- ✅ REQUIRED
         p.full_name,
         tr.last_read_at
 
