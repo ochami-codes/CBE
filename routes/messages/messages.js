@@ -9,7 +9,7 @@ const router = express.Router();
 ========================================================= */
 router.post("/", async (req, res) => {
   const client = await pool.connect();
-
+console.log("BODY:", req.body);
   const { id: profile_id, church_id } = req.user;
   const { content, recipient_profile_id, thread_id } = req.body;
 
