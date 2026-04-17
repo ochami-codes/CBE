@@ -395,4 +395,34 @@ router.get("/unread-count", async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+// GET if users have a thread
+router.get("/thread-with/:user_id", async (req, res) => {
+  const { id: currentUserId } = req.user;
+  const { user_id } = req.params;
+
+  try {
+    const result = await pool.query(
+      `
+      SELECT t.id AS thread_id
+      FROM threads t
+      JOIN thread_participants tp1
+        ON tp1.thread_id = t.id
+      JOIN thread_participants tp2
+        ON tp2.thread_id = t.id
+      WHERE tp1.user_id = $1
+        AND tp2.user_id = $2
+      LIMIT 1
+      `,
+      [currentUserId, user_id]
+    );
+
+    res.json({
+      thread_id: result.rows[0]?.thread_id || null,
+    });
+  } catch (err) {
+    console.error("❌ THREAD LOOKUP ERROR:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
 export default router;
