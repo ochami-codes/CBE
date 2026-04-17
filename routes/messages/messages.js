@@ -296,20 +296,19 @@ router.get("/users", async (req, res) => {
   const { church_id, id: currentUserId } = req.user;
 
   try {
-    const { data, error } = await supabase
-      .from("members")
-      .select(`
-        profile_id,
-        profiles(full_name),
-        role:roles (
-          id,
-          name,
-          is_leader
-        )
-      `)
-      .eq("church_id", church_id)
-      .neq("profile_id", currentUserId);
-
+const { data, error } = await supabase
+  .from("members")
+  .select(`
+    profile_id,
+    profiles(full_name),
+    role:roles!inner (
+      id,
+      name,
+      is_leader
+    )
+  `)
+  .eq("church_id", church_id)
+  .neq("profile_id", currentUserId);
     if (error) throw error;
 
     const grouped = {};
