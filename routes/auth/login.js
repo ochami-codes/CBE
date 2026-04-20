@@ -68,52 +68,76 @@ router.post("/", async (req, res) => {
       });
     }
 
-    /* ---------------------------------
-       4️⃣ Fetch member record (if exists)
-    ---------------------------------- */
-    const { data: member, error: memberError } =
-      await supabaseAdmin
-        .from("members")
-        .select("role_name, active")
-        .eq("profile_id", profile.id)
-        .maybeSingle();
+/* ---------------------------------
+   4️⃣ Fetch member + roles
+---------------------------------- */
+const { data: member, error: memberError } =
+  await supabaseAdmin
+    .from("members")
+    .select(`
+      id,
+      status,
+      member_roles (
+        roles (
+          name
+        )
+      )
+    `)
+    .eq("profile_id", profile.id)
+    .maybeSingle();
 
-    if (memberError) {
-      console.error("Member fetch error:", memberError);
-      return res.status(500).json({
-        message: "Failed to fetch membership status",
-      });
-    }
-
+if (memberError) {
+  console.error("Member fetch error:", memberError);
+  return res.status(500).json({
+    message: "Failed to fetch membership status",
+  });
+}
     /* ---------------------------------
        5️⃣ Block deactivated members
     ---------------------------------- */
-    if (member?.active === false) {
-      return res.status(403).json({
-        message: "Your account has been deactivated",
-      });
-    }
+    if (member && member.status !== "active") {
+  return res.status(403).json({
+    message: "Your account is not active",
+  });
+}
 
-    const isMember = profile.is_member === true;
+    const isMember = profile.is_member === true && member?.status === "active";
+/* ---------------------------------
+   6️⃣ Extract roles
+---------------------------------- */
+let roles = ["guest"];
 
+if (profile.is_member && member) {
+  const roleNames =
+    member.member_roles?.map((r) => r.roles?.name) || [];
+
+  if (roleNames.length > 0) {
+    roles = roleNames;
+  } else {
+    roles = ["member"];
+  }
+}
     /* ---------------------------------
-       6️⃣ Success
+       7.  Success
     ---------------------------------- */
-    return res.json({
-      access_token: session.access_token,
-      refresh_token: session.refresh_token,
-      user: {
-        id: profile.id,
-        full_name: profile.full_name,
-        email: profile.email,
-        church_id: profile.church_id || null,
-        role_name: isMember
-          ? member?.role_name || "Member"
-          : "Guest",
-        active: member?.active ?? true,
-        is_member: isMember,
-      },
-    });
+   return res.json({
+  access_token: session.access_token,
+  refresh_token: session.refresh_token,
+  user: {
+    id: profile.id,
+    full_name: profile.full_name,
+    email: profile.email,
+    church_id: profile.church_id || null,
+
+    roles,
+    primary_role: roles[0],
+
+    status: member?.status || "pending",
+    active: member?.status === "active",
+
+    is_member: profile.is_member === true,
+  },
+});
 
   } catch (err) {
     console.error("Login error:", err);
