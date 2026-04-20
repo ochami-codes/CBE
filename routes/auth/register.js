@@ -1,11 +1,49 @@
 import express from "express";
-import { supabaseAuth } from "../../supabaseClient.js";
+import { supabaseAuth, supabaseAdmin } from "../../supabaseClient.js";
 import { pool } from "../../db.js";
 
 const router = express.Router();
 
+/* =====================================================
+   Helpers
+===================================================== */
+
+const sanitizeChurchBaseName = (name = "") =>
+  name
+    .replace(/\b(sda|church|seventh day adventist)\b/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+const buildFullChurchName = (baseName) =>
+  `${baseName} SDA Church`;
+
+const generateChurchCode = (name = "") =>
+  name
+    .toLowerCase()
+    .replace(/\s+/g, "-")
+    .replace(/[^a-z0-9-]/g, "");
+
+const isValidKenyanPhone = (phone) => {
+  if (!phone) return false;
+  const cleaned = phone.replace(/\s+/g, "");
+  return /^(?:\+254|254|0)(7\d{8}|1\d{8})$/.test(cleaned);
+};
+
+const normalizeKenyanPhone = (phone = "") => {
+  let p = phone.replace(/\s+/g, "");
+  if (p.startsWith("0")) p = "254" + p.slice(1);
+  if (p.startsWith("+")) p = p.slice(1);
+  return p;
+};
+
+/* =====================================================
+   Route
+===================================================== */
+
 router.post("/", async (req, res) => {
   const client = await pool.connect();
+
+  let createdAuthUserId = null; // 👈 used for rollback
 
   try {
     const {
@@ -19,6 +57,21 @@ router.post("/", async (req, res) => {
       church_name,
     } = req.body;
 
+    /* ---------------- Validation ---------------- */
+    if (!email || !password || !full_name || !church_name) {
+      return res.status(400).json({
+        message: "Missing required fields",
+      });
+    }
+
+    if (phone && !isValidKenyanPhone(phone)) {
+      return res.status(400).json({
+        message: "Invalid Kenyan phone number",
+      });
+    }
+
+    const normalizedPhone = normalizeKenyanPhone(phone);
+
     /* ---------------- 1. Create auth user ---------------- */
     const { data: authData, error: authError } =
       await supabaseAuth.auth.signUp({
@@ -31,13 +84,20 @@ router.post("/", async (req, res) => {
       });
 
     if (authError) {
-      return res.status(400).json({ message: authError.message });
+      return res.status(400).json({
+        message: authError.message,
+      });
     }
 
-    const userId = authData.user.id;
+    const userId = authData?.user?.id;
 
-    const normalizedPhone = normalizeKenyanPhone(phone);
+    if (!userId) {
+      throw new Error("Auth user creation failed");
+    }
 
+    createdAuthUserId = userId; // 👈 mark for rollback
+
+    /* ---------------- Prepare church data ---------------- */
     const baseName = sanitizeChurchBaseName(church_name);
     const finalName = buildFullChurchName(baseName);
     const churchCode = generateChurchCode(baseName);
@@ -137,7 +197,7 @@ router.post("/", async (req, res) => {
 
       member = memberRes.rows[0];
 
-      /* Get admin role */
+      /* Assign Admin role */
       const roleRes = await client.query(
         `SELECT id FROM roles WHERE name = 'Admin' LIMIT 1`
       );
@@ -164,14 +224,25 @@ router.post("/", async (req, res) => {
     });
 
   } catch (err) {
-    /* ---------------- ROLLBACK ---------------- */
+    /* ---------------- ROLLBACK DB ---------------- */
     await client.query("ROLLBACK");
 
-    console.error(" Registration error:", err);
+    /* ---------------- ROLLBACK AUTH ---------------- */
+    if (createdAuthUserId) {
+      try {
+        await supabaseAdmin.auth.admin.deleteUser(createdAuthUserId);
+        console.log("🧹 Rolled back auth user:", createdAuthUserId);
+      } catch (cleanupErr) {
+        console.error("⚠️ Failed to rollback auth user:", cleanupErr);
+      }
+    }
+
+    console.error("❌ Registration error:", err);
 
     return res.status(500).json({
       message: err.message || "Registration failed",
     });
+
   } finally {
     client.release();
   }
