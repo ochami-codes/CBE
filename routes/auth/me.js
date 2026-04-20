@@ -49,28 +49,43 @@ router.get("/", async (req, res) => {
     }
 
     // ---------------- Member with Role Join ----------------
-    const { data: member } = await supabaseAdmin
-      .from("members")
-      .select("role_name, active")
-      .eq("profile_id", profileId)
-      .maybeSingle();
+const { data: member } = await supabaseAdmin
+  .from("members")
+  .select(`
+    id,
+    status,
+    profile_id,
+    member_roles (
+      role_id,
+      roles (
+        name
+      )
+    )
+  `)
+  .eq("profile_id", profileId)
+  .maybeSingle();
 
-    if (member && member.active === false) {
-      return res.status(403).json({
-        user: null,
-        message: "Account deactivated",
-      });
-    }
+   if (member && member.status !== "active") {
+  return res.status(403).json({
+    user: null,
+    message: "Account not active",
+  });
+}
 
     const isMember = !!profile.is_member;
-    const memberActive = member?.active ?? true;
+    const memberActive = member?.status === "active";
 
     // Normalize role_name
-    let roles = ["guest"];
+ let roles = ["guest"];
 
-if (isMember) {
-  const normalizedRole = normalizeRole(member?.role_name) || "member";
-  roles = [normalizedRole];
+if (isMember && member) {
+  const roleNames = member.member_roles?.map(r => r.roles?.name) || [];
+
+  if (roleNames.length > 0) {
+    roles = roleNames.map(r => normalizeRole(r));
+  } else {
+    roles = ["member"];
+  }
 }
 
 const permissions = getUserPermissions(roles);
