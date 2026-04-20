@@ -2,48 +2,27 @@ import express from "express";
 import { supabaseAuth, supabaseAdmin } from "../../supabaseClient.js";
 import { pool } from "../../db.js";
 
+import {
+  sanitizeChurchBaseName,
+  buildFullChurchName,
+  generateChurchCode,
+} from "../../utils/church.js";
+
+import {
+  normalizeKenyanPhone,
+  isValidKenyanPhone,
+} from "../../utils/phone.js";
+
+import { toNameCase } from "../../utils/formatters.js";
+
 const router = express.Router();
 
 /* =====================================================
-   Helpers
+   REGISTER USER
 ===================================================== */
-
-const sanitizeChurchBaseName = (name = "") =>
-  name
-    .replace(/\b(sda|church|seventh day adventist)\b/gi, "")
-    .replace(/\s+/g, " ")
-    .trim();
-
-const buildFullChurchName = (baseName) =>
-  `${baseName} SDA Church`;
-
-const generateChurchCode = (name = "") =>
-  name
-    .toLowerCase()
-    .replace(/\s+/g, "-")
-    .replace(/[^a-z0-9-]/g, "");
-
-const isValidKenyanPhone = (phone) => {
-  if (!phone) return false;
-  const cleaned = phone.replace(/\s+/g, "");
-  return /^(?:\+254|254|0)(7\d{8}|1\d{8})$/.test(cleaned);
-};
-
-const normalizeKenyanPhone = (phone = "") => {
-  let p = phone.replace(/\s+/g, "");
-  if (p.startsWith("0")) p = "254" + p.slice(1);
-  if (p.startsWith("+")) p = p.slice(1);
-  return p;
-};
-
-/* =====================================================
-   Route
-===================================================== */
-
 router.post("/", async (req, res) => {
   const client = await pool.connect();
-
-  let createdAuthUserId = null; // 👈 used for rollback
+  let createdAuthUserId = null;
 
   try {
     const {
@@ -57,89 +36,83 @@ router.post("/", async (req, res) => {
       church_name,
     } = req.body;
 
-    /* ---------------- Validation ---------------- */
+    /* ---------------- VALIDATION ---------------- */
     if (!email || !password || !full_name || !church_name) {
-      return res.status(400).json({
-        message: "Missing required fields",
-      });
+      return res.status(400).json({ message: "Missing required fields" });
     }
 
     if (phone && !isValidKenyanPhone(phone)) {
-      return res.status(400).json({
-        message: "Invalid Kenyan phone number",
-      });
+      return res.status(400).json({ message: "Invalid Kenyan phone number" });
     }
 
     const normalizedPhone = normalizeKenyanPhone(phone);
+    const formattedName = toNameCase(full_name);
 
-    /* ---------------- 1. Create auth user ---------------- */
+    /* ---------------- CREATE AUTH USER ---------------- */
     const { data: authData, error: authError } =
       await supabaseAuth.auth.signUp({
         email,
         password,
         options: {
-          data: { full_name },
+          data: { full_name: formattedName },
           emailRedirectTo: `${process.env.FRONTEND_URL}/auth/callback`,
         },
       });
 
     if (authError) {
-      return res.status(400).json({
-        message: authError.message,
-      });
+      return res.status(400).json({ message: authError.message });
     }
 
     const userId = authData?.user?.id;
+    if (!userId) throw new Error("Auth user creation failed");
 
-    if (!userId) {
-      throw new Error("Auth user creation failed");
-    }
+    createdAuthUserId = userId;
 
-    createdAuthUserId = userId; // 👈 mark for rollback
-
-    /* ---------------- Prepare church data ---------------- */
+    /* ---------------- PREPARE CHURCH DATA ---------------- */
     const baseName = sanitizeChurchBaseName(church_name);
     const finalName = buildFullChurchName(baseName);
     const churchCode = generateChurchCode(baseName);
 
-    /* ---------------- TRANSACTION START ---------------- */
+    /* ---------------- START TRANSACTION ---------------- */
     await client.query("BEGIN");
 
-    /* ---------------- 2. Get or create church ---------------- */
-    let churchResult = await client.query(
-      `SELECT * FROM churches
-       WHERE church_code = $1 AND conference_id = $2
+    /* ---------------- GET OR CREATE CHURCH ---------------- */
+    let { rows } = await client.query(
+      `SELECT * FROM churches 
+       WHERE church_code = $1 AND conference_id = $2 
        LIMIT 1`,
       [churchCode, conference_id]
     );
 
-    let church = churchResult.rows[0];
+    let church = rows[0];
 
     if (!church) {
-      const insertChurch = await client.query(
+      const insertRes = await client.query(
         `INSERT INTO churches (name, church_code, conference_id)
          VALUES ($1, $2, $3)
          RETURNING *`,
         [finalName, churchCode, conference_id]
       );
 
-      church = insertChurch.rows[0];
+      church = insertRes.rows[0];
 
-      /* Create default departments */
+      /* Default departments */
       await client.query(
         `INSERT INTO departments (name, code, church_id)
-         VALUES
-         ('Children','children',$1),
-         ('Youth','youth',$1),
-         ('Choir','choir',$1),
-         ('Treasury','treasury',$1)`,
+         VALUES 
+          ('Children','children',$1),
+          ('Youth','youth',$1),
+          ('Choir','choir',$1),
+          ('Treasury','treasury',$1)`,
         [church.id]
       );
     }
 
-    /* ---------------- 3. Get profile ---------------- */
+    /* ---------------- FETCH PROFILE ---------------- */
     const profileRes = await client.query(
-      `SELECT * FROM profiles WHERE auth_user_id = $1 LIMIT 1`,
+      `SELECT * FROM profiles 
+       WHERE auth_user_id = $1 
+       LIMIT 1`,
       [userId]
     );
 
@@ -149,16 +122,16 @@ router.post("/", async (req, res) => {
 
     const profile = profileRes.rows[0];
 
-    /* ---------------- 4. Count members ---------------- */
+    /* ---------------- MEMBER COUNT ---------------- */
     const countRes = await client.query(
       `SELECT COUNT(*) FROM members WHERE church_id = $1`,
       [church.id]
     );
 
-    const memberCount = parseInt(countRes.rows[0].count, 10);
+    const memberCount = Number(countRes.rows[0].count);
     const isFirstUser = memberCount === 0;
 
-    /* ---------------- 5. Update profile ---------------- */
+    /* ---------------- UPDATE PROFILE ---------------- */
     await client.query(
       `UPDATE profiles SET
         full_name = COALESCE($1, full_name),
@@ -172,7 +145,7 @@ router.post("/", async (req, res) => {
         is_system_user = TRUE
        WHERE id = $9`,
       [
-        full_name,
+        formattedName,
         email,
         normalizedPhone,
         date_of_birth,
@@ -184,9 +157,9 @@ router.post("/", async (req, res) => {
       ]
     );
 
+    /* ---------------- CREATE MEMBER (FIRST USER) ---------------- */
     let member = null;
 
-    /* ---------------- 6. Create member if first user ---------------- */
     if (isFirstUser) {
       const memberRes = await client.query(
         `INSERT INTO members (profile_id, church_id, status)
@@ -197,9 +170,11 @@ router.post("/", async (req, res) => {
 
       member = memberRes.rows[0];
 
-      /* Assign Admin role */
+      /* Assign admin role */
       const roleRes = await client.query(
-        `SELECT id FROM roles WHERE LOWER(name) = 'admin' LIMIT 1`
+        `SELECT id FROM roles 
+         WHERE LOWER(name) = 'admin' 
+         LIMIT 1`
       );
 
       const adminRoleId = roleRes.rows[0]?.id;
@@ -222,7 +197,6 @@ router.post("/", async (req, res) => {
         : "Registration successful. Await approval.",
       church_id: church.id,
     });
-
   } catch (err) {
     /* ---------------- ROLLBACK DB ---------------- */
     await client.query("ROLLBACK");
@@ -242,7 +216,6 @@ router.post("/", async (req, res) => {
     return res.status(500).json({
       message: err.message || "Registration failed",
     });
-
   } finally {
     client.release();
   }
