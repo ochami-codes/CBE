@@ -199,7 +199,7 @@ router.post("/", async (req, res) => {
 
       /* Assign Admin role */
       const roleRes = await client.query(
-        `SELECT id FROM roles WHERE name = 'Admin' LIMIT 1`
+        `SELECT id FROM roles WHERE LOWER(name) = 'admin' LIMIT 1`
       );
 
       const adminRoleId = roleRes.rows[0]?.id;
