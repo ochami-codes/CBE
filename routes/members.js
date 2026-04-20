@@ -4,7 +4,11 @@ const router = express.Router();
 
 /* ---------------- Permission Helper ---------------- */
 function requirePermission(user, permission) {
-  return user?.permissions?.includes(permission);
+  if (!user) return false;
+
+  if (user.roles?.includes("admin")) return true;
+
+  return user.permissions?.includes(permission);
 }
 
 /**
@@ -16,30 +20,36 @@ router.get("/", async (req, res) => {
   const { department } = req.query;
 
   try {
-    let { data, error } = await supabase
-      .from("members")
-      .select(`
-        id,
-        profile_id,
-        role_name,
-        active,
-        created_at,
-        profiles!inner (
-          full_name,
-          phone,
-          gender,
-          is_system_user
-        ),
-        member_departments (
-          departments (
-            name,
-            code
-          )
-        )
-      `)
-      .eq("church_id", church_id)
-      .order("full_name", { ascending: true, foreignTable: "profiles" });
+let { data, error } = await supabase
+  .from("members")
+  .select(`
+    id,
+    profile_id,
+    status,
+    created_at,
 
+    profiles!inner (
+      full_name,
+      phone,
+      gender,
+      is_system_user
+    ),
+
+    member_departments (
+      departments (
+        name,
+        code
+      )
+    ),
+
+    member_roles (
+      roles (
+        name
+      )
+    )
+  `)
+  .eq("church_id", church_id)
+  .order("full_name", { ascending: true, foreignTable: "profiles" });
     if (error) throw error;
 
     if (department) {
@@ -50,19 +60,31 @@ router.get("/", async (req, res) => {
       );
     }
 
-    const members = (data || []).map((m) => ({
-      id: m.id,
-      profile_id: m.profile_id,
-      full_name: m.profiles?.full_name || null,
-      phone: m.profiles?.phone || null,
-      gender: m.profiles?.gender || null,
-      is_system_user: m.profiles?.is_system_user || false,
-      department:
-        m.member_departments?.map((md) => md.departments?.name) || [],
-      role_name: m.role_name,
-      active: m.active,
-      created_at: m.created_at,
-    }));
+   const members = (data || []).map((m) => {
+  const departments =
+    m.member_departments?.map((md) => md.departments?.name) || [];
+
+  const roles =
+    m.member_roles?.map((mr) => mr.roles?.name) || [];
+
+  return {
+    id: m.id,
+    profile_id: m.profile_id,
+    full_name: m.profiles?.full_name || null,
+    phone: m.profiles?.phone || null,
+    gender: m.profiles?.gender || null,
+    is_system_user: m.profiles?.is_system_user || false,
+
+    departments,
+    roles,
+
+    primary_role: roles[0] || "member",
+    status: m.status,
+    active: m.status === "active",
+
+    created_at: m.created_at,
+  };
+});
 
     return res.json({ members });
   } catch (err) {
@@ -198,10 +220,13 @@ router.delete("/:id", async (req, res) => {
 
   try {
     const { error } = await supabase
-      .from("members")
-      .delete()
-      .eq("id", id)
-      .eq("church_id", church_id);
+  .from("members")
+  .update({
+    status: "removed",
+    status_reason: "manual removal",
+  })
+  .eq("id", id)
+  .eq("church_id", church_id);
 
     if (error) throw error;
 
