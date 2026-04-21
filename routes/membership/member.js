@@ -1,167 +1,315 @@
 // routes/membership/member.js
 import express from "express";
+import { pool } from "../../db.js";
+
 const router = express.Router();
+
+/* =====================================================
+   Helpers
+===================================================== */
+const isValidAction = (action) =>
+  ["accepted", "rejected"].includes(action);
 
 /* =====================================================
    POST /membership-requests
    Logged-in user requests membership
 ===================================================== */
 router.post("/", async (req, res) => {
-  try {
-    const supabase = req.supabase;
+  const client = await pool.connect();
 
+  try {
     if (!req.user?.id) {
       return res.status(401).json({ message: "Not authenticated" });
     }
 
     const userId = req.user.id;
 
-    // Get selected church from profile
-    const { data: profile, error: profileError } = await supabase
-      .from("profiles")
-      .select("church_id")
-      .eq("id", userId)
-      .single();
+    await client.query("BEGIN");
 
-    if (profileError) {
-      console.error("Profile load error:", profileError);
-      return res.status(500).json({ message: "Failed to load profile" });
+    // 1. Get user's selected church
+    const { rows: profileRows } = await client.query(
+      `SELECT church_id
+       FROM profiles
+       WHERE id = $1`,
+      [userId]
+    );
+
+    const profile = profileRows[0];
+
+    if (!profile) {
+      throw new Error("Profile not found");
     }
 
-    if (!profile?.church_id) {
+    if (!profile.church_id) {
+      await client.query("ROLLBACK");
       return res.status(400).json({
         message: "Church not selected",
       });
     }
 
-    const { data, error } = await supabase.rpc(
-      "create_membership_request",
-      {
-        p_profile_id: userId,
-        p_church_id: profile.church_id,
-      }
+    const churchId = profile.church_id;
+
+    // 2. Check existing active request
+    const { rows: existingRows } = await client.query(
+      `SELECT id
+       FROM membership_requests
+       WHERE profile_id = $1
+         AND church_id = $2
+         AND status IN ('requested', 'invited')
+       LIMIT 1`,
+      [userId, churchId]
     );
 
-    if (error) {
-      console.error("Create membership request RPC error:", error);
+    if (existingRows.length > 0) {
+      await client.query("ROLLBACK");
       return res.status(400).json({
-        message: error.message || "Request failed",
+        message: "An active membership request already exists",
       });
     }
 
-    res.status(201).json(data);
-
-  } catch (err) {
-    console.error("Server Error:", err);
-    res.status(500).json({
-      message: "Internal server error",
-    });
-  }
-});
-
-
-/* =====================================================
-   GET /membership-requests/me
-   Get latest membership workflow for logged-in user
-===================================================== */
-router.get("/me", async (req, res) => {
-  try {
-    const supabase = req.supabase;
-
-    if (!req.user?.id) {
-      return res.status(401).json({ message: "Not authenticated" });
-    }
-
-    const profileId = req.user.id;
-
-    const { data, error } = await supabase
-      .from("membership_requests")
-      .select(`
-        id,
+    // 3. Create request
+    const { rows: insertRows } = await client.query(
+      `INSERT INTO membership_requests (
+        profile_id,
+        church_id,
         source,
         status,
-        membership_requested_at,
-        membership_responded_at,
-        acted_by
-      `)
-      .eq("profile_id", profileId)
-      .order("membership_requested_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
+        membership_requested_at
+      )
+      VALUES ($1, $2, 'user_request', 'requested', NOW())
+      RETURNING id`,
+      [userId, churchId]
+    );
 
-    if (error) {
-      console.error("Load membership request error:", error);
-      return res.status(500).json({
-        message: "Failed to load membership request",
-      });
-    }
+    const requestId = insertRows[0].id;
 
-    res.json({ request: data || null });
+    // 4. Notify admins
+    await client.query(
+      `INSERT INTO notifications (
+        user_id,
+        church_id,
+        type,
+        title,
+        message,
+        related_id,
+        related_type,
+        is_read,
+        created_at
+      )
+      SELECT
+        p.id,
+        $1,
+        'membership_request',
+        'New Membership Request',
+        'A new membership request has been submitted.',
+        $2,
+        'membership_request',
+        false,
+        NOW()
+      FROM profiles p
+      JOIN members m ON m.profile_id = p.id
+      JOIN member_roles mr ON mr.member_id = m.id
+      JOIN roles r ON r.id = mr.role_id
+      WHERE LOWER(r.name) = 'admin'
+        AND m.church_id = $1`,
+      [churchId, requestId]
+    );
+
+    await client.query("COMMIT");
+
+    res.status(201).json({
+      id: requestId,
+      message: "Membership request created",
+    });
 
   } catch (err) {
-    console.error("Server Error:", err);
+    await client.query("ROLLBACK");
+
+    console.error("Create membership request error:", err);
+
     res.status(500).json({
-      message: "Internal server error",
+      message: err.message || "Internal server error",
     });
+
+  } finally {
+    client.release();
   }
 });
-
 
 /* =====================================================
    PATCH /membership-requests/:id/respond
    User responds to an admin invite
-   (accepted | rejected)
 ===================================================== */
 router.patch("/:id/respond", async (req, res) => {
-  try {
-    const supabase = req.supabase;
+  const client = await pool.connect();
 
+  try {
     if (!req.user?.id) {
       return res.status(401).json({ message: "Not authenticated" });
     }
 
     const userId = req.user.id;
-    const { id } = req.params;
+    const { id: requestId } = req.params;
     const { action } = req.body;
 
-    // Early validation
-    if (!["accepted", "rejected"].includes(action)) {
+    if (!isValidAction(action)) {
       return res.status(400).json({
         message: "Invalid action",
       });
     }
 
-    const { data, error } = await supabase.rpc(
-      "respond_to_membership_invite",
-      {
-        p_request_id: id,
-        p_action: action,
-        p_profile_id: userId,
-      }
+    await client.query("BEGIN");
+
+    // 1. Lock request
+    const { rows } = await client.query(
+      `SELECT *
+       FROM membership_requests
+       WHERE id = $1
+       FOR UPDATE`,
+      [requestId]
     );
 
-    if (error) {
-      console.error("Respond invite RPC error:", {
-        message: error.message,
-        code: error.code,
-        details: error.details,
-        hint: error.hint,
-      });
+    if (rows.length === 0) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({ message: "Request not found" });
+    }
 
+    const request = rows[0];
+
+    // 2. Validate business rules
+    if (request.source !== "admin_invite") {
+      await client.query("ROLLBACK");
       return res.status(400).json({
-        message: error.message || "Failed to respond to invite",
+        message: "This request is not an admin invite",
       });
     }
 
-    res.json(data);
+    if (request.profile_id !== userId) {
+      await client.query("ROLLBACK");
+      return res.status(403).json({
+        message: "Unauthorized",
+      });
+    }
+
+    if (request.status !== "invited") {
+      await client.query("ROLLBACK");
+      return res.status(400).json({
+        message: "Request already handled",
+      });
+    }
+
+    // 3. Update request
+    await client.query(
+      `UPDATE membership_requests
+       SET status = $1,
+           acted_by = $2,
+           membership_responded_at = NOW()
+       WHERE id = $3`,
+      [action, userId, requestId]
+    );
+
+    // 4. If accepted → create member + role
+    if (action === "accepted") {
+      const { rows: memberRows } = await client.query(
+        `INSERT INTO members (profile_id, church_id)
+         VALUES ($1, $2)
+         ON CONFLICT (profile_id, church_id) DO NOTHING
+         RETURNING id`,
+        [userId, request.church_id]
+      );
+
+      const memberId = memberRows[0]?.id;
+
+      await client.query(
+        `UPDATE profiles
+         SET is_member = true,
+             church_id = $1
+         WHERE id = $2`,
+        [request.church_id, userId]
+      );
+
+      if (memberId) {
+        await client.query(
+          `INSERT INTO member_roles (member_id, role_id)
+           SELECT $1, r.id
+           FROM roles r
+           WHERE LOWER(r.name) = 'member'
+           ON CONFLICT DO NOTHING`,
+          [memberId]
+        );
+      }
+    }
+
+    // 5. Mark notification as read
+    await client.query(
+      `UPDATE notifications
+       SET is_read = true,
+           read_at = NOW()
+       WHERE related_id = $1
+         AND user_id = $2`,
+      [requestId, userId]
+    );
+
+    // 6. Notify admins
+    await client.query(
+      `INSERT INTO notifications (
+        user_id,
+        church_id,
+        type,
+        title,
+        message,
+        related_id,
+        related_type,
+        is_read,
+        created_at
+      )
+      SELECT
+        p.id,
+        $1,
+        CASE 
+          WHEN $2 = 'accepted' THEN 'membership_invite_accepted'
+          ELSE 'membership_invite_rejected'
+        END,
+        CASE 
+          WHEN $2 = 'accepted' THEN 'Invitation Accepted'
+          ELSE 'Invitation Rejected'
+        END,
+        CASE 
+          WHEN $2 = 'accepted'
+            THEN 'A user has accepted the church invitation.'
+          ELSE 'A user has rejected the church invitation.'
+        END,
+        $3,
+        'membership_request',
+        false,
+        NOW()
+      FROM profiles p
+      JOIN members m ON m.profile_id = p.id
+      JOIN member_roles mr ON mr.member_id = m.id
+      JOIN roles r ON r.id = mr.role_id
+      WHERE LOWER(r.name) = 'admin'
+        AND m.church_id = $1`,
+      [request.church_id, action, requestId]
+    );
+
+    await client.query("COMMIT");
+
+    res.json({
+      message: `Invitation ${action}`,
+    });
 
   } catch (err) {
-    console.error("Server Error:", err);
+    await client.query("ROLLBACK");
+
+    console.error("Respond invite error:", err);
+
     res.status(500).json({
-      message: "Internal server error",
+      message: err.message || "Internal server error",
     });
+
+  } finally {
+    client.release();
   }
 });
-
 
 export default router;
