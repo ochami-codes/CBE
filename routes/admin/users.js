@@ -28,41 +28,40 @@ router.post(
   requirePermission("manage_users"),
   async (req, res) => {
     const supabase = req.supabase;
-    const targetUserId = req.params.id;
+    const targetMemberId = req.params.id;
     const adminId = req.user.id;
     const churchId = req.user.church_id;
 
-    // Prevent self-deactivation
-    if (adminId === targetUserId) {
+    if (adminId === targetMemberId) {
       return res.status(400).json({
         message: "You cannot deactivate yourself.",
       });
     }
 
     try {
-      // 1️⃣ Load member record
-      const { data: member, error: fetchError } = await supabase
+      // 1️⃣ Fetch member
+      const { data: member, error } = await supabase
         .from("members")
-        .select("id, active")
-        .eq("id", targetUserId)
+        .select("id, status")
+        .eq("id", targetMemberId)
         .eq("church_id", churchId)
         .single();
 
-      if (fetchError || !member) {
+      if (error || !member) {
         return res.status(404).json({ message: "Member not found" });
       }
 
-      if (member.active === false) {
+      if (member.status !== "active") {
         return res.status(400).json({
-          message: "User is already deactivated",
+          message: `User already ${member.status}`,
         });
       }
 
-      // 2️⃣ Deactivate
+      // 2️⃣ Update status → inactive
       const { error: updateError } = await supabase
         .from("members")
         .update({
-          active: false,
+          status: "inactive",
           deactivated_at: new Date().toISOString(),
         })
         .eq("id", member.id)
@@ -74,6 +73,7 @@ router.post(
         success: true,
         message: "User deactivated successfully",
       });
+
     } catch (err) {
       console.error("Deactivate user error:", err);
       res.status(500).json({
@@ -91,14 +91,14 @@ router.post(
   requirePermission("manage_users"),
   async (req, res) => {
     const supabase = req.supabase;
-    const targetUserId = req.params.id;
+    const targetMemberId = req.params.id;
     const churchId = req.user.church_id;
 
     try {
       const { data: member, error } = await supabase
         .from("members")
-        .select("id, active")
-        .eq("id", targetUserId)
+        .select("id, status")
+        .eq("id", targetMemberId)
         .eq("church_id", churchId)
         .single();
 
@@ -106,16 +106,17 @@ router.post(
         return res.status(404).json({ message: "Member not found" });
       }
 
-      if (member.active === true) {
+      if (member.status === "active") {
         return res.status(400).json({
           message: "User is already active",
         });
       }
 
+      // 2️⃣ Update status → active
       const { error: updateError } = await supabase
         .from("members")
         .update({
-          active: true,
+          status: "active",
           deactivated_at: null,
         })
         .eq("id", member.id)
@@ -127,6 +128,7 @@ router.post(
         success: true,
         message: "User reactivated successfully",
       });
+
     } catch (err) {
       console.error("Activate user error:", err);
       res.status(500).json({

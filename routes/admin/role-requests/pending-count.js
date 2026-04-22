@@ -1,5 +1,5 @@
-// backend/routes/admin/role-requests/pending-count.js
 import express from "express";
+import { pool } from "../../../db.js";
 
 const router = express.Router();
 
@@ -22,34 +22,43 @@ function requirePermission(permission) {
 
 /**
  * GET /admin/role-requests/pending-count
- * Returns number of pending role requests
  */
 router.get(
   "/",
-  requirePermission("access_role_requests"),
+  requirePermission("manage_roles"),
   async (req, res) => {
-    const supabase = req.supabase;
-    const churchId = req.user.church_id;
-
-    if (!churchId) {
-      return res.status(400).json({ error: "Missing church context" });
-    }
+    const client = await pool.connect();
 
     try {
-      const { count, error } = await supabase
-        .from("role_requests")
-        .select("*", { count: "exact", head: true })
-        .eq("role_request_status", "pending")
-        .eq("church_id", churchId);
+      const churchId = req.user.church_id;
 
-      if (error) throw error;
+      if (!churchId) {
+        return res.status(400).json({
+          error: "Missing church context",
+        });
+      }
 
-      res.json({ count: count || 0 });
+      const { rows } = await client.query(
+        `SELECT COUNT(*) AS count
+         FROM role_requests
+         WHERE role_request_status = 'pending'
+           AND church_id = $1`,
+        [churchId]
+      );
+
+      res.json({
+        count: parseInt(rows[0].count, 10) || 0,
+      });
+
     } catch (err) {
       console.error("Pending role requests count error:", err);
+
       res.status(500).json({
         error: "Failed to fetch pending role requests count",
       });
+
+    } finally {
+      client.release();
     }
   }
 );

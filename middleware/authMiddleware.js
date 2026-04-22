@@ -54,38 +54,50 @@ export async function authMiddleware(req, res, next) {
     console.log("🔹 Profile found:", profile.id, profile.full_name);
 
     /* ---------- Fetch Member Record ---------- */
-    const { data: member, error: memberError } = await supabaseAdmin
-      .from("members")
-      .select("id, role_name, active")
-      .eq("profile_id", profile.id)
-      .eq("church_id", profile.church_id)
-      .maybeSingle();
+const { data: memberData, error: memberError } = await supabaseAdmin
+  .from("members")
+  .select(`
+    id,
+    status,
+    member_roles (
+      roles (
+        name
+      )
+    )
+  `)
+  .eq("profile_id", profile.id)
+  .eq("church_id", profile.church_id)
+  .maybeSingle();
 
-    if (memberError) {
-      console.error("❌ Member fetch error:", memberError);
-    }
+if (memberError) {
+  console.error("❌ Member fetch error:", memberError);
+}
 
-    if (member && member.active === false) {
-      console.warn("❌ Account deactivated for profile:", profile.id);
-      return res.status(403).json({ message: "Account deactivated" });
-    }
-
+if (memberData) {
+  if (memberData.status !== "active") {
+    return res.status(403).json({
+      message: "Account is not active",
+    });
+  }
+}
     const isMember = !!profile.is_member;
 
     /* ---------- Role + Permissions ---------- */
-    const role = normalizeRole(
-      isMember ? member?.role_name || "member" : "guest"
-    );
-
-    const permissions = getUserPermissions([role]);
-
+    const roles = memberData?.member_roles?.map(
+  (mr) => mr.roles.name
+) || [];
+const normalizedRoles = roles.length
+  ? roles.map(normalizeRole)
+  : ["member"];
+    const permissions = getUserPermissions(normalizedRoles);
     /* ---------- Attach user to request ---------- */
     req.user = {
       id: profile.id,
       member_id: member?.id ?? null,
       email: profile.email ?? authUser.email,
       full_name: profile.full_name || "Guest",
-      role_name: role,
+      roles: normalizedRoles,
+primary_role: normalizedRoles[0], // optional
       church_id: profile.church_id ?? null,
       is_member: isMember,
       email_confirmed_at: authUser.email_confirmed_at,

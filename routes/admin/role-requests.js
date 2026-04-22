@@ -1,4 +1,5 @@
 import express from "express";
+import { pool } from "../../db.js";
 
 const router = express.Router();
 
@@ -6,16 +7,16 @@ const router = express.Router();
    Helper: Role Management Access
 ===================================================== */
 function requireRoleManagement(req, res) {
-  const { permissions, is_member } = req.user;
+  const { permissions = [], is_member } = req.user || {};
 
   if (!is_member) {
-    res.status(403).json({ error: "Members only" });
-    return false;
+    return res.status(403).json({ message: "Members only" });
   }
 
   if (!permissions.includes("manage_roles")) {
-    res.status(403).json({ error: "Forbidden" });
-    return false;
+    return res.status(403).json({
+      message: "You don't have permission to manage roles",
+    });
   }
 
   return true;
@@ -24,35 +25,26 @@ function requireRoleManagement(req, res) {
 /**
  * GET /admin/role-requests
  */
+
 router.get("/", async (req, res) => {
   if (!requireRoleManagement(req, res)) return;
 
-  const supabase = req.supabase;
-  const churchId = req.user.church_id;
+  const client = await pool.connect();
 
   try {
-    const { data, error } = await supabase
-      .from("member_full_dashboard")
-      .select(`
-        role_request_id,
-        requested_role,
-        role_request_status,
-        role_requested_at,
-        full_name,
-        email,
-        role_name,
-        role_requested_by_id,
-        role_requested_by_name,
-        role_requested_by_email
-      `)
-      .eq("church_id", churchId)
-      .eq("role_request_status", "pending")
-      .not("role_request_id", "is", null)
-      .order("role_requested_at", { ascending: false });
+    const churchId = req.user.church_id;
 
-    if (error) throw error;
+    const { rows } = await client.query(
+      `SELECT *
+       FROM member_full_dashboard
+       WHERE church_id = $1
+         AND role_request_status = 'pending'
+         AND role_request_id IS NOT NULL
+       ORDER BY role_requested_at DESC`,
+      [churchId]
+    );
 
-    const shaped = (data || []).map((r) => ({
+    const shaped = rows.map((r) => ({
       id: r.role_request_id,
       requested_role: r.requested_role,
       role_request_status: r.role_request_status,
@@ -72,68 +64,196 @@ router.get("/", async (req, res) => {
     }));
 
     res.json({ requests: shaped });
+
   } catch (err) {
     console.error("Fetch role requests error:", err);
-    res.status(500).json({ error: "Failed to load role requests" });
+    res.status(500).json({
+      error: "Failed to load role requests",
+    });
+  } finally {
+    client.release();
   }
 });
 
-/**
- * POST /admin/role-requests/:id/approve
- */
-router.post("/:id/approve", async (req, res) => {
+// Approve or reject
+router.post("/:id/review", async (req, res) => {
   if (!requireRoleManagement(req, res)) return;
 
-  const supabase = req.supabase;
-  const { id } = req.params;
-  const adminId = req.user.id;
+  const client = await pool.connect();
 
   try {
-    const { data, error } = await supabase.rpc("handle_role_request", {
-      p_request_id: id,
-      p_action: "approved",
-      p_admin_id: adminId,
+    const requestId = req.params.id;
+    const adminProfileId = req.user.id;
+    const churchId = req.user.church_id;
+    const { action } = req.body; // 'approved' | 'rejected'
+
+    if (!["approved", "rejected"].includes(action)) {
+      return res.status(400).json({ error: "Invalid action" });
+    }
+
+    await client.query("BEGIN");
+
+    // ------------------------------------
+    // 1️⃣ Get admin member id
+    // ------------------------------------
+    const adminRes = await client.query(
+      `SELECT id
+       FROM members
+       WHERE profile_id = $1
+         AND church_id = $2
+       LIMIT 1`,
+      [adminProfileId, churchId]
+    );
+
+    if (adminRes.rows.length === 0) {
+      await client.query("ROLLBACK");
+      return res.status(403).json({
+        error: "Admin is not a valid member",
+      });
+    }
+
+    const adminMemberId = adminRes.rows[0].id;
+
+    // ------------------------------------
+    // 2️⃣ Lock request
+    // ------------------------------------
+    const reqRes = await client.query(
+      `SELECT *
+       FROM role_requests
+       WHERE id = $1
+       FOR UPDATE`,
+      [requestId]
+    );
+
+    if (reqRes.rows.length === 0) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({
+        error: "Role request not found",
+      });
+    }
+
+    const request = reqRes.rows[0];
+
+    if (request.role_request_status !== "pending") {
+      await client.query("ROLLBACK");
+      return res.status(400).json({
+        error: "Request already handled",
+      });
+    }
+
+    // ------------------------------------
+    // 3️⃣ APPROVAL → assign role
+    // ------------------------------------
+    if (action === "approved") {
+      // get role id
+      const roleRes = await client.query(
+        `SELECT id
+         FROM roles
+         WHERE LOWER(name) = LOWER($1)
+         LIMIT 1`,
+        [request.requested_role]
+      );
+
+      if (roleRes.rows.length === 0) {
+        await client.query("ROLLBACK");
+        return res.status(404).json({
+          error: "Role not found",
+        });
+      }
+
+      const roleId = roleRes.rows[0].id;
+
+      // attach role
+      await client.query(
+        `INSERT INTO member_roles (member_id, role_id)
+         VALUES ($1, $2)
+         ON CONFLICT DO NOTHING`,
+        [request.member_id, roleId]
+      );
+    }
+
+    // ------------------------------------
+    // 4️⃣ Update request
+    // ------------------------------------
+    await client.query(
+      `UPDATE role_requests
+       SET role_request_status = $1,
+           role_reviewed_at = NOW(),
+           role_reviewed_by = $2
+       WHERE id = $3`,
+      [action, adminMemberId, requestId]
+    );
+
+    // ------------------------------------
+    // 5️⃣ Notify user
+    // ------------------------------------
+    const profileRes = await client.query(
+      `SELECT profile_id
+       FROM members
+       WHERE id = $1`,
+      [request.member_id]
+    );
+
+    const targetProfileId = profileRes.rows[0]?.profile_id;
+
+    if (targetProfileId) {
+      await client.query(
+        `INSERT INTO notifications (
+          user_id,
+          church_id,
+          type,
+          title,
+          message,
+          related_id,
+          related_type,
+          is_read,
+          created_at
+        )
+        VALUES (
+          $1,
+          $2,
+          CASE
+            WHEN $3 = 'approved' THEN 'role_request_approved'
+            ELSE 'role_request_rejected'
+          END,
+          CASE
+            WHEN $3 = 'approved' THEN 'Role Approved'
+            ELSE 'Role Rejected'
+          END,
+          CASE
+            WHEN $3 = 'approved'
+              THEN 'Your role request has been approved.'
+            ELSE 'Your role request has been rejected.'
+          END,
+          $4,
+          'role_request',
+          false,
+          NOW()
+        )`,
+        [targetProfileId, churchId, action, requestId]
+      );
+    }
+
+    await client.query("COMMIT");
+
+    res.json({
+      success: true,
+      action,
     });
 
-    if (error) throw error;
-
-    res.json(data);
   } catch (err) {
-    console.error("Approve role request RPC error:", err);
-    res.status(400).json({
-      error: err.message || "Failed to approve role request",
+    await client.query("ROLLBACK");
+
+    console.error("Role review error:", err);
+
+    res.status(500).json({
+      error: err.message || "Failed to process role request",
     });
+
+  } finally {
+    client.release();
   }
 });
-
-/**
- * POST /admin/role-requests/:id/reject
- */
-router.post("/:id/reject", async (req, res) => {
-  if (!requireRoleManagement(req, res)) return;
-
-  const supabase = req.supabase;
-  const { id } = req.params;
-  const adminId = req.user.id;
-
-  try {
-    const { data, error } = await supabase.rpc("handle_role_request", {
-      p_request_id: id,
-      p_action: "rejected",
-      p_admin_id: adminId,
-    });
-
-    if (error) throw error;
-
-    res.json(data);
-  } catch (err) {
-    console.error("Reject role request RPC error:", err);
-    res.status(400).json({
-      error: err.message || "Failed to reject role request",
-    });
-  }
-});
-
 /**
  * PUT /admin/role-requests/members/:id/role
  * Directly update a member's role (admin action)
@@ -141,28 +261,45 @@ router.post("/:id/reject", async (req, res) => {
 router.put("/members/:id/role", async (req, res) => {
   if (!requireRoleManagement(req, res)) return;
 
-  const supabase = req.supabase;
-  const { id } = req.params;
-  const { role_name } = req.body;
-  const churchId = req.user.church_id;
-
-  if (!role_name) {
-    return res.status(400).json({ error: "Role is required" });
-  }
+  const client = await pool.connect();
 
   try {
-    const { error } = await supabase
-      .from("members")
-      .update({ role_name })
-      .eq("id", id)
-      .eq("church_id", churchId);
+    const memberId = req.params.id;
+    const { role_name } = req.body;
 
-    if (error) throw error;
+    if (!role_name) {
+      return res.status(400).json({ error: "Role is required" });
+    }
 
-    return res.json({ message: "Role updated successfully" });
+    // get role id
+    const roleRes = await client.query(
+      `SELECT id FROM roles WHERE LOWER(name) = LOWER($1)`,
+      [role_name]
+    );
+
+    if (roleRes.rows.length === 0) {
+      return res.status(404).json({ error: "Role not found" });
+    }
+
+    const roleId = roleRes.rows[0].id;
+
+    // attach role
+    await client.query(
+      `INSERT INTO member_roles (member_id, role_id)
+       VALUES ($1, $2)
+       ON CONFLICT DO NOTHING`,
+      [memberId, roleId]
+    );
+
+    res.json({ message: "Role assigned successfully" });
+
   } catch (err) {
     console.error("Manual role update error:", err);
-    return res.status(500).json({ error: "Failed to update role" });
+    res.status(500).json({
+      error: "Failed to update role",
+    });
+  } finally {
+    client.release();
   }
 });
 export default router;
