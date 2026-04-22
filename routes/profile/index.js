@@ -1,4 +1,5 @@
 import express from "express";
+import { pool } from "../../db.js";
 
 const router = express.Router();
 
@@ -7,92 +8,88 @@ const router = express.Router();
 -------------------------------------------------- */
 router.get("/", async (req, res) => {
   console.log("=== /profile route hit ===");
-  const supabase = req.supabase;
-  const userId = req.user?.id;
 
-  console.log("req.user:", req.user);
-
-  if (!userId) {
-    console.warn("❌ No userId in req.user");
-    return res.status(401).json({ message: "Unauthenticated" });
-  }
+  const client = await pool.connect();
 
   try {
-    console.log("🔹 Fetching profile for userId:", userId);
+    const userId = req.user?.id;
 
-    // ---------------- Fetch profile ----------------
-    const { data: profile, error: profileError } = await supabase
-      .from("profiles")
-      .select(`
-        id,
-        full_name,
-        phone,
-        email,
-        church_id,
-        is_member
-      `)
-      .or(`id.eq.${userId},auth_user_id.eq.${userId}`)
-      .maybeSingle();
+    console.log("req.user:", req.user);
 
-    if (profileError) {
-      console.error("❌ Profile fetch error:", profileError);
+    if (!userId) {
+      return res.status(401).json({ message: "Unauthenticated" });
     }
 
-    if (!profile) {
-      console.warn("❌ Profile not found for userId:", userId);
+    // ---------------- Fetch profile ----------------
+    const profileRes = await client.query(
+      `SELECT id, full_name, phone, email, church_id, is_member
+       FROM profiles
+       WHERE id = $1`,
+      [userId]
+    );
+
+    if (profileRes.rows.length === 0) {
       return res.status(404).json({ message: "Profile not found" });
     }
 
-    console.log("✅ Profile fetched:", profile);
+    const profile = profileRes.rows[0];
 
-    const profileId = profile.id; // always use actual profile.id
+    // ---------------- Fetch membership + roles ----------------
+    const memberRes = await client.query(
+      `SELECT 
+         m.id,
+         m.status,
+         array_agg(r.name) FILTER (WHERE r.name IS NOT NULL) AS roles
+       FROM members m
+       LEFT JOIN member_roles mr ON mr.member_id = m.id
+       LEFT JOIN roles r ON r.id = mr.role_id
+       WHERE m.profile_id = $1
+         AND m.church_id = $2
+       GROUP BY m.id, m.status`,
+      [profile.id, profile.church_id]
+    );
 
-    // ---------------- Fetch membership ----------------
-    const { data: member, error: memberError } = await supabase
-      .from("members")
-      .select("role_name, active")
-      .eq("profile_id", profileId)
-      .maybeSingle();
-
-    if (memberError) {
-      console.error("❌ Member fetch error:", memberError);
-    }
+    const member = memberRes.rows[0] || null;
 
     // ---------------- Fetch contributions ----------------
-    const { data: contributions, error: contribError } = await supabase
-      .from("member_giving_summary")
-      .select(`
-        fund_name,
-        year,
-        total_amount,
-        yearly_total,
-        overall_total
-      `)
-      .eq("profile_id", profileId);
-
-    if (contribError) {
-      console.error("❌ Contributions fetch error:", contribError);
-    }
+    const contribRes = await client.query(
+      `SELECT fund_name, year, total_amount, yearly_total, overall_total
+       FROM member_giving_summary
+       WHERE profile_id = $1`,
+      [profile.id]
+    );
 
     const isMember = !!profile.is_member;
 
     // ---------------- Respond ----------------
-    return res.json({
+    res.json({
       profile: {
         id: profile.id,
         full_name: profile.full_name || null,
         phone: profile.phone || null,
         email: profile.email || null,
-        role_name: isMember ? member?.role_name || "Member" : "Guest",
-        active: member?.active ?? true,
+
+        // 🔥 NEW ROLE SYSTEM
+        roles: isMember ? member?.roles || ["member"] : ["guest"],
+
+        status: member?.status || "active",
+
         church_id: profile.church_id || null,
         is_member: isMember,
       },
-      contributions: contributions || [],
+
+      contributions: contribRes.rows || [],
     });
+
   } catch (err) {
-    console.error("❌ GET /profile unexpected error:", err);
-    return res.status(500).json({ message: "Failed to load profile" });
+    console.error("❌ GET /profile error:", err);
+
+    res.status(500).json({
+      message: "Failed to load profile",
+    });
+
+  } finally {
+    client.release();
   }
 });
 
