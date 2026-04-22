@@ -88,12 +88,14 @@ if (memberData) {
 ) || [];
 const normalizedRoles = roles.length
   ? roles.map(normalizeRole)
-  : ["member"];
+  : isMember
+    ? ["member"]
+    : ["guest"];
     const permissions = getUserPermissions(normalizedRoles);
     /* ---------- Attach user to request ---------- */
     req.user = {
       id: profile.id,
-      member_id: member?.id ?? null,
+      member_id: memberData?.id ?? null,
       email: profile.email ?? authUser.email,
       full_name: profile.full_name || "Guest",
       roles: normalizedRoles,
