@@ -302,50 +302,71 @@ router.get("/users", async (req, res) => {
   const { church_id, id: currentUserId } = req.user;
 
   try {
-const { data, error } = await supabase
-  .from("members")
-  .select(`
-    profile_id,
-    profiles(full_name),
-    role:roles!inner (
-      id,
-      name,
-      is_leader
-    )
-  `)
-  .eq("church_id", church_id)
-  .neq("profile_id", currentUserId);
+    const { data, error } = await supabase
+      .from("members")
+      .select(`
+        profile_id,
+        profiles(full_name),
+        member_roles (
+          roles (
+            id,
+            name,
+            is_leader
+          )
+        )
+      `)
+      .eq("church_id", church_id)
+      .neq("profile_id", currentUserId);
+
     if (error) throw error;
 
     const grouped = {};
 
     data.forEach((m) => {
-      const roleName = m.role?.name || "member";
-      const isLeader = m.role?.is_leader || false;
       const name = m.profiles?.full_name;
-
       if (!name) return;
 
-      // 🔑 group key (leaders separate from members)
-      const key = isLeader
-        ? `leader:${roleName}`
-        : "member";
+      const roles = m.member_roles?.map((mr) => mr.roles) || [];
 
-      if (!grouped[key]) {
-        grouped[key] = {
-          type: isLeader ? "leaders" : "members",
-          role: isLeader ? roleName : "member",
-          users: [],
-        };
+      // fallback if no roles assigned
+      if (roles.length === 0) {
+        roles.push({ name: "member", is_leader: false });
       }
 
-      grouped[key].users.push({
-        id: m.profile_id,
-        name,
+      roles.forEach((role) => {
+        const roleName = role?.name || "member";
+        const isLeader = role?.is_leader || false;
+
+        const key = isLeader
+          ? `leader:${roleName}`
+          : "member";
+
+        if (!grouped[key]) {
+          grouped[key] = {
+            type: isLeader ? "leaders" : "members",
+            role: isLeader ? roleName : "member",
+            users: [],
+          };
+        }
+
+        grouped[key].users.push({
+          id: m.profile_id,
+          name,
+        });
       });
     });
 
-    // Optional: sort groups (leaders first)
+    // Optional: remove duplicate users in same group
+    Object.values(grouped).forEach((group) => {
+      const seen = new Set();
+      group.users = group.users.filter((u) => {
+        if (seen.has(u.id)) return false;
+        seen.add(u.id);
+        return true;
+      });
+    });
+
+    // Sort groups (leaders first, then alphabetically)
     const sortedGroups = Object.values(grouped).sort((a, b) => {
       if (a.type === "leaders" && b.type !== "leaders") return -1;
       if (a.type !== "leaders" && b.type === "leaders") return 1;
@@ -355,7 +376,7 @@ const { data, error } = await supabase
     res.json({ groups: sortedGroups });
 
   } catch (err) {
-    console.error("❌ GET /messages/users error:", err);
+    console.error("❌ GET /users error:", err);
     res.status(500).json({ error: err.message });
   }
 });
