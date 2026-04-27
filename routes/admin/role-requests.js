@@ -27,7 +27,10 @@ function requireRoleManagement(req, res) {
  */
 
 router.get("/", async (req, res) => {
-  if (!requireRoleManagement(req, res)) return;
+  if (!requireRoleManagement(req, res)) {
+    console.log("❌ Permission denied:", req.user?.id);
+    return;
+  }
 
   const client = await pool.connect();
 
@@ -44,7 +47,7 @@ router.get("/", async (req, res) => {
       [churchId]
     );
 
-    const shaped = rows.map((r) => ({
+    const requests = rows.map((r) => ({
       id: r.role_request_id,
       requested_role: r.requested_role,
       role_request_status: r.role_request_status,
@@ -63,18 +66,18 @@ router.get("/", async (req, res) => {
       },
     }));
 
-    res.json({ requests: shaped });
+    return res.json({ requests });
 
   } catch (err) {
-    console.error("Fetch role requests error:", err);
-    res.status(500).json({
-      error: "Failed to load role requests",
+    console.error("❌ Fetch role requests error:", err);
+
+    return res.status(500).json({
+      error: err.message || "Failed to load role requests",
     });
   } finally {
     client.release();
   }
 });
-
 // Approve or reject
 router.post("/:id/review", async (req, res) => {
   if (!requireRoleManagement(req, res)) return;
