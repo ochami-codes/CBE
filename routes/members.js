@@ -17,74 +17,90 @@ function requirePermission(user, permission) {
 router.get("/", async (req, res) => {
   const supabase = req.supabase;
   const { church_id } = req.user;
-  const { department } = req.query;
+  const { search, department } = req.query;
 
   try {
-let { data, error } = await supabase
-  .from("members")
-  .select(`
-    id,
-    profile_id,
-    status,
-    created_at,
+    /* ---------------- Base Query ---------------- */
+    let query = supabase
+      .from("members")
+      .select(`
+        id,
+        profile_id,
+        status,
+        created_at,
 
-    profiles!inner (
-      full_name,
-      phone,
-      gender,
-      is_system_user
-    ),
+        profiles!inner (
+          full_name,
+          phone,
+          gender,
+          is_system_user
+        ),
 
-    member_departments (
-      departments (
-        name,
-        code
-      )
-    ),
+        member_departments (
+          departments (
+            name,
+            code
+          )
+        ),
 
-    member_roles (
-      roles (
-        name
-      )
-    )
-  `)
-  .eq("church_id", church_id)
-  .order("full_name", { ascending: true, foreignTable: "profiles" });
-    if (error) throw error;
-
-    if (department) {
-      data = data.filter((m) =>
-        m.member_departments?.some(
-          (md) => md.departments?.code === department
+        member_roles (
+          roles (
+            name
+          )
         )
+      `)
+      .eq("church_id", church_id)
+      .order("full_name", {
+        ascending: true,
+        foreignTable: "profiles",
+      });
+
+    /* ---------------- Search Filter ---------------- */
+    if (search?.trim()) {
+      query = query.or(
+        `full_name.ilike.%${search}%,phone.ilike.%${search}%`,
+        { foreignTable: "profiles" }
       );
     }
 
-   const members = (data || []).map((m) => {
-  const departments =
-    m.member_departments?.map((md) => md.departments?.name) || [];
+    /* ---------------- Execute Query ---------------- */
+    const { data, error } = await query;
+    if (error) throw error;
 
-  const roles =
-    m.member_roles?.map((mr) => mr.roles?.name) || [];
+    /* ---------------- Transform ---------------- */
+    let members = (data || []).map((m) => {
+      const departments =
+        m.member_departments?.map((md) => md.departments?.name) || [];
 
-  return {
-    id: m.id,
-    profile_id: m.profile_id,
-    full_name: m.profiles?.full_name || null,
-    phone: m.profiles?.phone || null,
-    gender: m.profiles?.gender || null,
-    is_system_user: m.profiles?.is_system_user || false,
+      const roles =
+        m.member_roles?.map((mr) => mr.roles?.name) || [];
 
-    departments,
-    roles,
+      return {
+        id: m.id,
+        profile_id: m.profile_id,
 
-    primary_role: roles[0] || "member",
-    status: m.status,
-    active: m.status === "active",
+        full_name: m.profiles?.full_name || null,
+        phone: m.profiles?.phone || null,
+        gender: m.profiles?.gender || null,
+        is_system_user: m.profiles?.is_system_user || false,
 
-    created_at: m.created_at,
-  };
-});
+        departments,
+        roles,
+        primary_role: roles[0] || "member",
+
+        status: m.status,
+        active: m.status === "active",
+
+        created_at: m.created_at,
+      };
+    });
+
+    /* ---------------- Department Filter (optional) ---------------- */
+    if (department) {
+      members = members.filter((m) =>
+        m.departments.some((d) => d === department)
+      );
+    }
 
     return res.json({ members });
   } catch (err) {
@@ -92,7 +108,6 @@ let { data, error } = await supabase
     return res.status(500).json({ message: "Failed to fetch members" });
   }
 });
-
 /* ---------------- Phone Normalization ---------------- */
 function normalizePhone(phone) {
   if (!phone) return null;
