@@ -38,12 +38,33 @@ router.get("/", async (req, res) => {
     const churchId = req.user.church_id;
 
     const { rows } = await client.query(
-      `SELECT *
-       FROM member_full_dashboard
-       WHERE church_id = $1
-         AND role_request_status = 'pending'
-         AND role_request_id IS NOT NULL
-       ORDER BY role_requested_at DESC`,
+      `
+      SELECT
+        rr.id AS role_request_id,
+        rr.requested_role,
+        rr.role_request_status,
+        rr.role_requested_at,
+
+        target.full_name,
+        target.email,
+        target.role_name,
+
+        requester.id AS role_requested_by_id,
+        requester.full_name AS role_requested_by_name,
+        requester.email AS role_requested_by_email
+
+      FROM role_requests rr
+
+      JOIN members m ON m.id = rr.member_id
+      JOIN profiles target ON target.id = m.profile_id
+
+      JOIN profiles requester ON requester.id = rr.requested_by
+
+      WHERE m.church_id = $1
+        AND rr.role_request_status = 'pending'
+
+      ORDER BY rr.role_requested_at DESC
+      `,
       [churchId]
     );
 
