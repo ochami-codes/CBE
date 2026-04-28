@@ -27,10 +27,7 @@ function requireRoleManagement(req, res) {
  */
 
 router.get("/", async (req, res) => {
-  if (!requireRoleManagement(req, res)) {
-    console.log("❌ Permission denied:", req.user?.id);
-    return;
-  }
+  if (!requireRoleManagement(req, res)) return;
 
   const client = await pool.connect();
 
@@ -40,27 +37,30 @@ router.get("/", async (req, res) => {
     const { rows } = await client.query(
       `
       SELECT
-        rr.id AS role_request_id,
+        rr.id,
         rr.requested_role,
         rr.role_request_status,
         rr.role_requested_at,
 
-        target.full_name,
-        target.email,
-        target.role_name,
+        -- target member (who the role is for)
+        target_profile.full_name AS target_full_name,
+        target_profile.email AS target_email,
 
-        requester.id AS role_requested_by_id,
-        requester.full_name AS role_requested_by_name,
-        requester.email AS role_requested_by_email
+        -- requester (who made the request)
+        requester_profile.id AS requester_id,
+        requester_profile.full_name AS requester_name,
+        requester_profile.email AS requester_email
 
       FROM role_requests rr
 
+      -- member being assigned role
       JOIN members m ON m.id = rr.member_id
-      JOIN profiles target ON target.id = m.profile_id
+      JOIN profiles target_profile ON target_profile.id = m.profile_id
 
-      JOIN profiles requester ON requester.id = rr.requested_by
+      -- person who made request
+      JOIN profiles requester_profile ON requester_profile.id = rr.requested_by
 
-      WHERE m.church_id = $1
+      WHERE rr.church_id = $1
         AND rr.role_request_status = 'pending'
 
       ORDER BY rr.role_requested_at DESC
@@ -69,30 +69,29 @@ router.get("/", async (req, res) => {
     );
 
     const requests = rows.map((r) => ({
-      id: r.role_request_id,
+      id: r.id,
       requested_role: r.requested_role,
       role_request_status: r.role_request_status,
       role_requested_at: r.role_requested_at,
 
       target_user: {
-        full_name: r.full_name,
-        email: r.email,
-        role: r.role_name,
+        full_name: r.target_full_name,
+        email: r.target_email,
       },
 
       requester: {
-        id: r.role_requested_by_id,
-        full_name: r.role_requested_by_name,
-        email: r.role_requested_by_email,
+        id: r.requester_id,
+        full_name: r.requester_name,
+        email: r.requester_email,
       },
     }));
 
-    return res.json({ requests });
+    res.json({ requests });
 
   } catch (err) {
-    console.error("❌ Fetch role requests error:", err);
+    console.error("Fetch role requests error:", err);
 
-    return res.status(500).json({
+    res.status(500).json({
       error: err.message || "Failed to load role requests",
     });
   } finally {
