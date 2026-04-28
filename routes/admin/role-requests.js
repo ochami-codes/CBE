@@ -42,27 +42,51 @@ router.get("/", async (req, res) => {
         rr.role_request_status,
         rr.role_requested_at,
 
-        -- target member (who the role is for)
+        -- target member
         target_profile.full_name AS target_full_name,
         target_profile.email AS target_email,
 
-        -- requester (who made the request)
-        requester_profile.id AS requester_id,
+        -- requester
+        requester_member.id AS requester_id,
         requester_profile.full_name AS requester_name,
-        requester_profile.email AS requester_email
+        requester_profile.email AS requester_email,
+
+        -- requester role
+        STRING_AGG(DISTINCT requester_role.name, ', ') AS requester_role
 
       FROM role_requests rr
 
-      -- member being assigned role
-      JOIN members m ON m.id = rr.member_id
-      JOIN profiles target_profile ON target_profile.id = m.profile_id
+      -- target member
+      JOIN members m
+        ON m.id = rr.member_id
+      JOIN profiles target_profile
+        ON target_profile.id = m.profile_id
 
-      -- person who made request
-      JOIN members requester_member ON requester_member.id = rr.requested_by
-JOIN profiles requester_profile ON requester_profile.id = requester_member.profile_id
+      -- requester member
+      JOIN members requester_member
+        ON requester_member.id = rr.requested_by
+      JOIN profiles requester_profile
+        ON requester_profile.id = requester_member.profile_id
+
+      -- requester roles
+      LEFT JOIN member_roles requester_mr
+        ON requester_mr.member_id = requester_member.id
+      LEFT JOIN roles requester_role
+        ON requester_role.id = requester_mr.role_id
 
       WHERE rr.church_id = $1
         AND rr.role_request_status = 'pending'
+
+      GROUP BY
+        rr.id,
+        rr.requested_role,
+        rr.role_request_status,
+        rr.role_requested_at,
+        target_profile.full_name,
+        target_profile.email,
+        requester_member.id,
+        requester_profile.full_name,
+        requester_profile.email
 
       ORDER BY rr.role_requested_at DESC
       `,
@@ -84,17 +108,19 @@ JOIN profiles requester_profile ON requester_profile.id = requester_member.profi
         id: r.requester_id,
         full_name: r.requester_name,
         email: r.requester_email,
+        role: r.requester_role,
       },
     }));
 
-    res.json({ requests });
+    return res.json({ requests });
 
   } catch (err) {
     console.error("Fetch role requests error:", err);
 
-    res.status(500).json({
+    return res.status(500).json({
       error: err.message || "Failed to load role requests",
     });
+
   } finally {
     client.release();
   }
