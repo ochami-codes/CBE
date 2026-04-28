@@ -58,7 +58,8 @@ router.get("/", async (req, res) => {
       JOIN profiles target_profile ON target_profile.id = m.profile_id
 
       -- person who made request
-      JOIN profiles requester_profile ON requester_profile.id = rr.requested_by
+      JOIN members requester_member ON requester_member.id = rr.requested_by
+JOIN profiles requester_profile ON requester_profile.id = requester_member.profile_id
 
       WHERE rr.church_id = $1
         AND rr.role_request_status = 'pending'
