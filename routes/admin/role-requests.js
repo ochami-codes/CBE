@@ -25,7 +25,6 @@ function requireRoleManagement(req, res) {
 /**
  * GET /admin/role-requests
  */
-
 router.get("/", async (req, res) => {
   if (!requireRoleManagement(req, res)) return;
 
@@ -43,36 +42,40 @@ router.get("/", async (req, res) => {
         rr.role_requested_at,
 
         -- target member
-        target_profile.full_name AS target_full_name,
-        target_profile.email AS target_email,
+        tp.full_name AS target_full_name,
+        tp.email AS target_email,
 
         -- requester
-        requester_member.id AS requester_id,
-        requester_profile.full_name AS requester_name,
-        requester_profile.email AS requester_email,
+        rm.id AS requester_id,
+        rp.full_name AS requester_name,
+        rp.email AS requester_email,
 
-        -- requester role
-        STRING_AGG(DISTINCT requester_role.name, ', ') AS requester_role
+        -- requester roles (MULTI ROLE SAFE)
+        COALESCE(
+          json_agg(DISTINCT r.name)
+          FILTER (WHERE r.name IS NOT NULL),
+          '[]'
+        ) AS requester_roles
 
       FROM role_requests rr
 
       -- target member
-      JOIN members m
-        ON m.id = rr.member_id
-      JOIN profiles target_profile
-        ON target_profile.id = m.profile_id
+      JOIN members tm
+        ON tm.id = rr.member_id
+      JOIN profiles tp
+        ON tp.id = tm.profile_id
 
       -- requester member
-      JOIN members requester_member
-        ON requester_member.id = rr.requested_by
-      JOIN profiles requester_profile
-        ON requester_profile.id = requester_member.profile_id
+      JOIN members rm
+        ON rm.id = rr.requested_by
+      JOIN profiles rp
+        ON rp.id = rm.profile_id
 
       -- requester roles
-      LEFT JOIN member_roles requester_mr
-        ON requester_mr.member_id = requester_member.id
-      LEFT JOIN roles requester_role
-        ON requester_role.id = requester_mr.role_id
+      LEFT JOIN member_roles mr
+        ON mr.member_id = rm.id
+      LEFT JOIN roles r
+        ON r.id = mr.role_id
 
       WHERE rr.church_id = $1
         AND rr.role_request_status = 'pending'
@@ -82,11 +85,11 @@ router.get("/", async (req, res) => {
         rr.requested_role,
         rr.role_request_status,
         rr.role_requested_at,
-        target_profile.full_name,
-        target_profile.email,
-        requester_member.id,
-        requester_profile.full_name,
-        requester_profile.email
+        tp.full_name,
+        tp.email,
+        rm.id,
+        rp.full_name,
+        rp.email
 
       ORDER BY rr.role_requested_at DESC
       `,
@@ -108,7 +111,7 @@ router.get("/", async (req, res) => {
         id: r.requester_id,
         full_name: r.requester_name,
         email: r.requester_email,
-        role: r.requester_role,
+        roles: r.requester_roles,
       },
     }));
 
@@ -305,48 +308,94 @@ router.post("/:id/review", async (req, res) => {
   }
 });
 /**
- * PUT /admin/role-requests/members/:id/role
- * Directly update a member's role (admin action)
+ * PUT /admin/members/:id/roles
+ * Replace member roles + update primary role (admin action)
  */
-router.put("/members/:id/role", async (req, res) => {
+router.put("/members/:id/roles", async (req, res) => {
   if (!requireRoleManagement(req, res)) return;
 
   const client = await pool.connect();
 
   try {
     const memberId = req.params.id;
-    const { role_name } = req.body;
+    const { roles, primary_role } = req.body;
 
-    if (!role_name) {
-      return res.status(400).json({ error: "Role is required" });
+    // ------------------ Validation ------------------
+    if (!Array.isArray(roles) || roles.length === 0) {
+      return res.status(400).json({ error: "Roles array is required" });
     }
 
-    // get role id
+    if (!primary_role) {
+      return res.status(400).json({ error: "Primary role is required" });
+    }
+
+    if (!roles.includes(primary_role)) {
+      return res.status(400).json({
+        error: "Primary role must be included in roles",
+      });
+    }
+
+    // ------------------ Fetch role IDs ------------------
     const roleRes = await client.query(
-      `SELECT id FROM roles WHERE LOWER(name) = LOWER($1)`,
-      [role_name]
+      `SELECT id, name FROM roles WHERE LOWER(name) = ANY($1)`,
+      [roles.map((r) => r.toLowerCase())]
     );
 
-    if (roleRes.rows.length === 0) {
-      return res.status(404).json({ error: "Role not found" });
+    if (roleRes.rows.length !== roles.length) {
+      return res.status(400).json({ error: "Some roles are invalid" });
     }
 
-    const roleId = roleRes.rows[0].id;
-
-    // attach role
-    await client.query(
-      `INSERT INTO member_roles (member_id, role_id)
-       VALUES ($1, $2)
-       ON CONFLICT DO NOTHING`,
-      [memberId, roleId]
+    const roleMap = new Map(
+      roleRes.rows.map((r) => [r.name.toLowerCase(), r.id])
     );
 
-    res.json({ message: "Role assigned successfully" });
+    const primaryRoleId =
+      roleMap.get(primary_role.toLowerCase());
+
+    if (!primaryRoleId) {
+      return res.status(400).json({
+        error: "Primary role is invalid",
+      });
+    }
+
+    // ------------------ Transaction ------------------
+    await client.query("BEGIN");
+
+    // 1. Clear existing roles
+    await client.query(
+      `DELETE FROM member_roles WHERE member_id = $1`,
+      [memberId]
+    );
+
+    // 2. Insert new roles
+    for (const roleName of roles) {
+      const roleId = roleMap.get(roleName.toLowerCase());
+
+      await client.query(
+        `INSERT INTO member_roles (member_id, role_id)
+         VALUES ($1, $2)`,
+        [memberId, roleId]
+      );
+    }
+
+    // 3. Update primary role (UUID version)
+    await client.query(
+      `UPDATE members
+       SET primary_role_id = $1
+       WHERE id = $2`,
+      [primaryRoleId, memberId]
+    );
+
+    await client.query("COMMIT");
+
+    res.json({ message: "Roles updated successfully" });
 
   } catch (err) {
-    console.error("Manual role update error:", err);
+    await client.query("ROLLBACK");
+
+    console.error("Role update error:", err);
     res.status(500).json({
-      error: "Failed to update role",
+      error: "Failed to update roles",
     });
   } finally {
     client.release();
