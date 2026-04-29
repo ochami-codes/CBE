@@ -308,10 +308,10 @@ router.post("/:id/review", async (req, res) => {
   }
 });
 /**
- * PUT /admin/members/:id/roles
+ * PUT /:id/roles
  * Replace member roles + update primary role (admin action)
  */
-router.put("/members/:id/roles", async (req, res) => {
+router.put("/:id/roles", async (req, res) => {
   if (!requireRoleManagement(req, res)) return;
 
   const client = await pool.connect();
