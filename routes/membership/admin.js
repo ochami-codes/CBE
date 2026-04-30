@@ -428,15 +428,26 @@ router.get("/non-members", requireChurch, async (req, res) => {
 
     const { rows } = await client.query(
       `SELECT
-        p.id AS profile_id,
-        p.full_name,
-        p.email,
-        p.phone,
-        p.is_member
-       FROM profiles p
-       WHERE p.church_id = $1
-         AND p.is_member = false
-       ORDER BY p.full_name ASC`,
+  p.id AS profile_id,
+  p.full_name,
+  p.email,
+  p.phone,
+  p.is_member,
+
+  mr.status AS membership_status,
+  mr.id AS request_id
+
+FROM profiles p
+
+LEFT JOIN membership_requests mr
+  ON mr.profile_id = p.id
+  AND mr.church_id = p.church_id
+  AND mr.status = 'pending' -- optional: only active requests
+
+WHERE p.church_id = $1
+  AND p.is_member = false
+
+ORDER BY p.full_name ASC`,
       [churchId]
     );
 
