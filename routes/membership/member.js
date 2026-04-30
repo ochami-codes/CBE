@@ -312,5 +312,52 @@ router.patch("/:id/respond", async (req, res) => {
     client.release();
   }
 });
+/* =====================================================
+   GET /membership-requests/me
+   Get current user's membership request/invite
+===================================================== */
+router.get("/me", async (req, res) => {
+  const client = await pool.connect();
 
+  try {
+    if (!req.user?.id) {
+      return res.status(401).json({ message: "Not authenticated" });
+    }
+
+    const userId = req.user.id;
+
+    const { rows } = await client.query(
+      `SELECT
+        mr.id,
+        mr.church_id,
+        mr.source,
+        mr.status,
+        mr.membership_requested_at,
+        mr.membership_responded_at
+       FROM membership_requests mr
+       WHERE mr.profile_id = $1
+       ORDER BY mr.membership_requested_at DESC
+       LIMIT 1`,
+      [userId]
+    );
+
+    const request = rows[0] || null;
+
+    res.json({
+      membership: request,
+      membership_status: request?.status || null,
+      has_active_request: ["invited", "requested"].includes(request?.status),
+    });
+
+  } catch (err) {
+    console.error("Fetch membership status error:", err);
+
+    res.status(500).json({
+      message: "Failed to fetch membership status",
+    });
+
+  } finally {
+    client.release();
+  }
+});
 export default router;
