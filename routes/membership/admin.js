@@ -442,7 +442,6 @@ FROM profiles p
 LEFT JOIN membership_requests mr
   ON mr.profile_id = p.id
   AND mr.church_id = p.church_id
-  AND mr.status = 'invited' -- optional: only active requests
 
 WHERE p.church_id = $1
   AND p.is_member = false
