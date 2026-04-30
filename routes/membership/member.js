@@ -211,12 +211,13 @@ router.patch("/:id/respond", async (req, res) => {
     // 4. If accepted → create member + role
     if (action === "accepted") {
       const { rows: memberRows } = await client.query(
-        `INSERT INTO members (profile_id, church_id)
-         VALUES ($1, $2)
-         ON CONFLICT (profile_id, church_id) DO NOTHING
-         RETURNING id`,
-        [userId, request.church_id]
-      );
+  `INSERT INTO members (profile_id, church_id, status)
+   VALUES ($1, $2, 'active')
+   ON CONFLICT (profile_id, church_id)
+   DO UPDATE SET status = 'active'
+   RETURNING id`,
+  [userId, request.church_id]
+);
 
       const memberId = memberRows[0]?.id;
 
