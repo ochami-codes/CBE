@@ -4,6 +4,8 @@ import express from "express";
 import cors from "cors";
 
 import authRoutes from "./routes/auth/index.js";
+import activeChurch from "./routes/church/activeChurch.js";
+import createChurch from "./routes/church/createChurch.js";
 import adminRoutes from "./routes/admin/index.js";
 import membershipRoutes from "./routes/membership/member.js";
 import adminMembershipRoutes from "./routes/membership/admin.js";
@@ -59,7 +61,8 @@ app.use("/messages", authMiddleware, messageRoutes);
 app.use("/profile", authMiddleware, profileRoutes);
 app.use("/membership-requests", authMiddleware, membershipRoutes);
 app.use("/donations", authMiddleware, donationRoutes);
-
+app.use("/create-church", authMiddleware, createChurch);
+app.use("/active-church", authMiddleware, activeChurch);
 app.use("/pastor", authMiddleware, pastorRoutes);
 app.use("/members", authMiddleware, memberRoutes);
 app.use("/departments", authMiddleware, departmentRoutes);

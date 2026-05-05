@@ -14,7 +14,7 @@ router.post("/", async (req, res) => {
 
   try {
     /* ---------------------------------
-       1️⃣ Authenticate via Supabase
+       1️⃣ Authenticate
     ---------------------------------- */
     const { data, error } =
       await supabaseAuth.auth.signInWithPassword({
@@ -40,104 +40,94 @@ router.post("/", async (req, res) => {
     }
 
     /* ---------------------------------
-       3️⃣ Fetch profile (SOURCE OF TRUTH)
+       3️⃣ Fetch profile
     ---------------------------------- */
     const { data: profile, error: profileError } =
       await supabaseAdmin
         .from("profiles")
-        .select(`
-          id,
-          full_name,
-          email,
-          church_id,
-          is_member
-        `)
+        .select("id, full_name, email")
         .eq("auth_user_id", user.id)
         .maybeSingle();
 
-    if (profileError) {
-      console.error("Profile fetch error:", profileError);
+    if (profileError || !profile) {
       return res.status(500).json({
-        message: "Failed to fetch profile",
+        message: "Profile not found",
       });
     }
 
-    if (!profile) {
-      return res.status(401).json({
-        message: "Profile record not found",
+    /* ---------------------------------
+       4️⃣ Fetch ALL memberships
+    ---------------------------------- */
+    const { data: memberships, error: memberError } =
+      await supabaseAdmin
+        .from("members")
+        .select(`
+          id,
+          church_id,
+          status,
+          churches (
+            name
+          ),
+          member_roles (
+            roles (
+              name
+            )
+          )
+        `)
+        .eq("profile_id", profile.id);
+
+    if (memberError) {
+      return res.status(500).json({
+        message: "Failed to fetch memberships",
       });
     }
 
-/* ---------------------------------
-   4️⃣ Fetch member + roles
----------------------------------- */
-const { data: member, error: memberError } =
-  await supabaseAdmin
-    .from("members")
-    .select(`
-      id,
-      status,
-      member_roles (
-        roles (
-          name
-        )
-      )
-    `)
-    .eq("profile_id", profile.id)
-    .maybeSingle();
-
-if (memberError) {
-  console.error("Member fetch error:", memberError);
-  return res.status(500).json({
-    message: "Failed to fetch membership status",
-  });
-}
     /* ---------------------------------
-       5️⃣ Block deactivated members
+       5️⃣ Normalize memberships
     ---------------------------------- */
-    if (member && member.status !== "active") {
-  return res.status(403).json({
-    message: "Your account is not active",
-  });
-}
+    const formattedMemberships = memberships.map((m) => {
+      const roles =
+        m.member_roles?.map((r) => r.roles?.name) || [];
 
-    const isMember = profile.is_member === true && member?.status === "active";
-/* ---------------------------------
-   6️⃣ Extract roles
----------------------------------- */
-let roles = ["guest"];
+      return {
+        id: m.id,
+        church_id: m.church_id,
+        church_name: m.churches?.name,
+        status: m.status,
+        roles: roles.length ? roles : ["member"],
+      };
+    });
 
-if (profile.is_member && member) {
-  const roleNames =
-    member.member_roles?.map((r) => r.roles?.name) || [];
-
-  if (roleNames.length > 0) {
-    roles = roleNames;
-  } else {
-    roles = ["member"];
-  }
-}
     /* ---------------------------------
-       7.  Success
+       6️⃣ Extract permissions/roles
     ---------------------------------- */
-   return res.json({
-  access_token: session.access_token,
-  refresh_token: session.refresh_token,
-  user: {
-    id: profile.id,
-    full_name: profile.full_name,
-    email: profile.email,
-    church_id: profile.church_id || null,
+    const allRoles = new Set();
 
-    roles,
-    primary_role: roles[0],
+    formattedMemberships.forEach((m) => {
+      if (m.status === "active") {
+        m.roles.forEach((r) => allRoles.add(r));
+      }
+    });
 
-    status: member?.status || "pending",
-    active: member?.status === "active",
+    const roles = allRoles.size ? [...allRoles] : ["guest"];
 
-    is_member: profile.is_member === true,
-  },
-});
+    /* ---------------------------------
+       7️⃣ Response
+    ---------------------------------- */
+    return res.json({
+      access_token: session.access_token,
+      refresh_token: session.refresh_token,
+      user: {
+        id: profile.id,
+        full_name: profile.full_name,
+        email: profile.email,
+
+        memberships: formattedMemberships,
+
+        roles,
+        primary_role: roles[0] || "guest",
+      },
+    });
 
   } catch (err) {
     console.error("Login error:", err);

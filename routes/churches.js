@@ -5,26 +5,39 @@ const router = express.Router();
 
 /**
  * GET /churches
- * Public list of churches
+ * Public list of churches + optional search
  */
 router.get("/", async (req, res) => {
   const supabase = req.supabase;
+  const { search } = req.query;
 
   try {
-    const { data, error } = await supabase
+    let query = supabase
       .from("churches")
-      .select("id, name, logo")
+      .select("id, name, church_code, logo")
       .order("name", { ascending: true });
+
+    // ---------------- SEARCH LOGIC ----------------
+    if (search && search.trim()) {
+      const term = search.trim();
+
+      query = query.ilike("name", `%${term}%`);
+    }
+
+    const { data, error } = await query;
 
     if (error) throw error;
 
-    res.json({ churches: data ?? [] });
+    return res.json({
+      churches: data ?? [],
+    });
   } catch (err) {
     console.error("Fetch churches error:", err);
-    res.status(500).json({ message: "Failed to load churches" });
+    return res.status(500).json({
+      message: "Failed to load churches",
+    });
   }
 });
-
 /**
  * GET /churches/:id
  * Fetch a single church (for dashboard, profile, etc.)
