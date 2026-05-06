@@ -4,17 +4,26 @@ import { getOrCreateChurch } from "../../services/churchService.js";
 
 const router = express.Router();
 
+/**
+ * CREATE / SELECT CHURCH
+ * - First user → becomes admin
+ * - Subsequent users → guest (no membership yet)
+ */
 router.post("/", async (req, res) => {
   const client = await pool.connect();
 
   try {
-    const { church_name, conference_id, profile_id } = req.body;
+    const { church_name, conference_id } = req.body;
 
-    if (!church_name || !conference_id || !profile_id) {
+    /* ---------------- VALIDATION ---------------- */
+    if (!church_name || !conference_id) {
       return res.status(400).json({
-        message: "church_name, conference_id and profile_id are required",
+        message: "church_name and conference_id are required",
       });
     }
+
+    // ✅ TRUSTED SOURCE (from authMiddleware)
+    const profile_id = req.user.id;
 
     await client.query("BEGIN");
 
@@ -65,12 +74,12 @@ router.post("/", async (req, res) => {
     }
 
     /* =====================================================
-       CASE 2: SUBSEQUENT USER → GUEST (NO MEMBERS TABLE)
+       CASE 2: SUBSEQUENT USER → GUEST
     ===================================================== */
     else {
       // No members insert
-      // No role tables
-      // Just system state handled via profile context
+      // No roles insert
+      // User stays "guest" (derived from lack of membership)
     }
 
     /* ---------------- UPDATE PROFILE ---------------- */
