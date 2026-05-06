@@ -8,31 +8,39 @@ import {
 
 const router = express.Router();
 
+/* =====================================================
+   POST /role-requests
+===================================================== */
 router.post("/", async (req, res) => {
   const client = await pool.connect();
 
   try {
     let { requested_role } = req.body;
-    const { member_id, church_id, is_member } = req.user;
+
+    const profileId = req.user?.id;
+    const churchId = req.user?.active_church_id;
+    const memberships = req.user?.memberships || [];
 
     // ------------------------------------
     // VALIDATIONS
     // ------------------------------------
-    if (!is_member) {
+    if (!profileId) {
+      return res.status(401).json({ error: "Unauthenticated" });
+    }
+
+    if (!churchId) {
+      return res.status(400).json({
+        error: "No active church selected",
+      });
+    }
+
+    const activeMembership = memberships.find(
+      (m) => m.church_id === churchId && m.status === "active"
+    );
+
+    if (!activeMembership) {
       return res.status(403).json({
-        error: "Only members can request roles",
-      });
-    }
-
-    if (!member_id) {
-      return res.status(400).json({
-        error: "Member record not found",
-      });
-    }
-
-    if (!church_id) {
-      return res.status(400).json({
-        error: "Church not set",
+        error: "Only active members can request roles",
       });
     }
 
@@ -59,16 +67,17 @@ router.post("/", async (req, res) => {
     await client.query("BEGIN");
 
     // ------------------------------------
-    // 1️⃣ Prevent duplicate pending request
+    // 1. Prevent duplicate pending request
     // ------------------------------------
     const existing = await client.query(
       `SELECT 1
        FROM role_requests
-       WHERE member_id = $1
-         AND requested_role = $2
+       WHERE profile_id = $1
+         AND church_id = $2
+         AND requested_role = $3
          AND role_request_status = 'pending'
        LIMIT 1`,
-      [member_id, requested_role]
+      [profileId, churchId, requested_role]
     );
 
     if (existing.rows.length > 0) {
@@ -79,26 +88,25 @@ router.post("/", async (req, res) => {
     }
 
     // ------------------------------------
-    // 2️⃣ Create request
+    // 2. Create request
     // ------------------------------------
     const insertRes = await client.query(
       `INSERT INTO role_requests (
-        member_id,
-        requested_by,
+        profile_id,
         requested_role,
         church_id,
         role_request_status,
         role_requested_at
       )
-      VALUES ($1, $1, $2, $3, 'pending', NOW())
+      VALUES ($1, $2, $3, 'pending', NOW())
       RETURNING *`,
-      [member_id, requested_role, church_id]
+      [profileId, requested_role, churchId]
     );
 
     const request = insertRes.rows[0];
 
     // ------------------------------------
-    // 3️⃣ Notify admins (NEW schema)
+    // 3. Notify admins
     // ------------------------------------
     await client.query(
       `INSERT INTO notifications (
@@ -128,7 +136,7 @@ router.post("/", async (req, res) => {
       WHERE m.church_id = $1
         AND LOWER(r.name) = 'admin'
         AND m.status = 'active'`,
-      [church_id, requested_role, request.id]
+      [churchId, requested_role, request.id]
     );
 
     await client.query("COMMIT");
@@ -149,23 +157,25 @@ router.post("/", async (req, res) => {
   }
 });
 
-// GET
+/* =====================================================
+   GET /role-requests/my-requests
+===================================================== */
 router.get("/my-requests", async (req, res) => {
   const client = await pool.connect();
 
   try {
-    const { member_id, is_member } = req.user;
+    const profileId = req.user?.id;
 
-    if (!is_member) {
-      return res.json({ requests: [] });
+    if (!profileId) {
+      return res.status(401).json({ error: "Unauthenticated" });
     }
 
     const { rows } = await client.query(
       `SELECT *
        FROM role_requests
-       WHERE member_id = $1
+       WHERE profile_id = $1
        ORDER BY role_requested_at DESC`,
-      [member_id]
+      [profileId]
     );
 
     res.json({ requests: rows });
@@ -181,4 +191,5 @@ router.get("/my-requests", async (req, res) => {
     client.release();
   }
 });
+
 export default router;

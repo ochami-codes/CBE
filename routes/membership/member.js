@@ -27,28 +27,14 @@ router.post("/", async (req, res) => {
     await client.query("BEGIN");
 
     // 1. Get user's selected church
-    const { rows: profileRows } = await client.query(
-      `SELECT church_id
-       FROM profiles
-       WHERE id = $1`,
-      [userId]
-    );
+const churchId = req.user.active_church_id;
 
-    const profile = profileRows[0];
-
-    if (!profile) {
-      throw new Error("Profile not found");
-    }
-
-    if (!profile.church_id) {
-      await client.query("ROLLBACK");
-      return res.status(400).json({
-        message: "Church not selected",
-      });
-    }
-
-    const churchId = profile.church_id;
-
+if (!churchId) {
+  await client.query("ROLLBACK");
+  return res.status(400).json({
+    message: "No active church selected",
+  });
+}
     // 2. Check existing active request
     const { rows: existingRows } = await client.query(
       `SELECT id
@@ -66,7 +52,21 @@ router.post("/", async (req, res) => {
         message: "An active membership request already exists",
       });
     }
+const { rows: memberRows } = await client.query(
+  `SELECT 1
+   FROM members
+   WHERE profile_id = $1
+     AND church_id = $2
+   LIMIT 1`,
+  [userId, churchId]
+);
 
+if (memberRows.length > 0) {
+  await client.query("ROLLBACK");
+  return res.status(400).json({
+    message: "Already a member of this church",
+  });
+}
     // 3. Create request
     const { rows: insertRows } = await client.query(
       `INSERT INTO membership_requests (
@@ -222,12 +222,11 @@ router.patch("/:id/respond", async (req, res) => {
       const memberId = memberRows[0]?.id;
 
       await client.query(
-        `UPDATE profiles
-         SET is_member = true,
-             church_id = $1
-         WHERE id = $2`,
-        [request.church_id, userId]
-      );
+  `UPDATE profiles
+   SET active_church_id = $1
+   WHERE id = $2`,
+  [request.church_id, userId]
+);
 
       if (memberId) {
         await client.query(
@@ -242,7 +241,7 @@ router.patch("/:id/respond", async (req, res) => {
     }
 
     // 5. Mark notification as read
-    await client.query(
+        await client.query(
       `UPDATE notifications
        SET is_read = true,
            read_at = NOW()

@@ -5,56 +5,87 @@ const router = express.Router();
 
 /**
  * GET /dashboard/upcoming-birthdays?days=7
- * Returns members in the same church whose birthday is in the next N days
  */
 router.get("/", async (req, res) => {
   const supabase = req.supabase;
   const user = req.user;
+
+  const churchId = user?.active_church_id;
   const daysAhead = parseInt(req.query.days) || 7;
 
-  if (!user?.church_id) {
-    return res.status(401).json({ error: "Unauthenticated" });
+  if (!churchId) {
+    return res.status(401).json({
+      error: "No active church selected",
+    });
   }
 
   try {
     const today = new Date();
     const currentYear = today.getUTCFullYear();
 
-    // Fetch all members of the church
+    /* ---------------- FETCH MEMBERS ---------------- */
     const { data, error } = await supabase
-      .from("profiles")
-      .select("id, full_name, date_of_birth")
-      .eq("church_id", user.church_id);
+      .from("members")
+      .select(`
+        profile_id,
+        status,
+        profiles (
+          id,
+          full_name,
+          date_of_birth
+        )
+      `)
+      .eq("church_id", churchId)
+      .eq("status", "active"); // only approved members
 
     if (error) {
       console.error("Upcoming birthdays fetch error:", error);
-      return res.status(500).json({ error: "Failed to fetch birthdays" });
+      return res.status(500).json({
+        error: "Failed to fetch birthdays",
+      });
     }
 
+    /* ---------------- PROCESS ---------------- */
     const upcoming = (data ?? [])
-      .map((member) => {
-        if (!member.date_of_birth) return null;
+      .map((m) => {
+        const dob = m.profiles?.date_of_birth;
+        if (!dob) return null;
 
-        const dob = new Date(member.date_of_birth);
-        if (isNaN(dob)) return null;
+        const dobDate = new Date(dob);
+        if (isNaN(dobDate)) return null;
 
-        let nextBirthday = new Date(currentYear, dob.getUTCMonth(), dob.getUTCDate());
+        // build next birthday
+        let nextBirthday = new Date(
+          Date.UTC(
+            currentYear,
+            dobDate.getUTCMonth(),
+            dobDate.getUTCDate()
+          )
+        );
 
         if (nextBirthday < today) {
           nextBirthday.setUTCFullYear(currentYear + 1);
         }
 
         const diffTime = nextBirthday - today;
-        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        const diffDays = Math.ceil(
+          diffTime / (1000 * 60 * 60 * 24)
+        );
 
         return diffDays <= daysAhead
-          ? { id: member.id, full_name: member.full_name, date_of_birth: member.date_of_birth, days_left: diffDays }
+          ? {
+              id: m.profiles.id,
+              full_name: m.profiles.full_name,
+              date_of_birth: m.profiles.date_of_birth,
+              days_left: diffDays,
+            }
           : null;
       })
       .filter(Boolean)
       .sort((a, b) => a.days_left - b.days_left);
 
     res.json(upcoming);
+
   } catch (err) {
     console.error("Upcoming birthdays error:", err);
     res.status(500).json({ error: "Server error" });

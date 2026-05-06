@@ -7,25 +7,21 @@ const router = express.Router();
    GET /profile
 -------------------------------------------------- */
 router.get("/", async (req, res) => {
-  console.log("=== /profile route hit ===");
-
   const client = await pool.connect();
 
   try {
-    const userId = req.user?.id;
+    const profileId = req.user?.id;
 
-    console.log("req.user:", req.user);
-
-    if (!userId) {
+    if (!profileId) {
       return res.status(401).json({ message: "Unauthenticated" });
     }
 
-    // ---------------- Fetch profile ----------------
+    /* ---------------- PROFILE ---------------- */
     const profileRes = await client.query(
-      `SELECT id, full_name, phone, email, church_id, is_member
+      `SELECT id, full_name, phone, email, active_church_id
        FROM profiles
        WHERE id = $1`,
-      [userId]
+      [profileId]
     );
 
     if (profileRes.rows.length === 0) {
@@ -34,24 +30,28 @@ router.get("/", async (req, res) => {
 
     const profile = profileRes.rows[0];
 
-    // ---------------- Fetch membership + roles ----------------
-    const memberRes = await client.query(
-      `SELECT 
-         m.id,
-         m.status,
-         array_agg(r.name) FILTER (WHERE r.name IS NOT NULL) AS roles
-       FROM members m
-       LEFT JOIN member_roles mr ON mr.member_id = m.id
-       LEFT JOIN roles r ON r.id = mr.role_id
-       WHERE m.profile_id = $1
-         AND m.church_id = $2
-       GROUP BY m.id, m.status`,
-      [profile.id, profile.church_id]
-    );
+    /* ---------------- ACTIVE MEMBERSHIP ---------------- */
+    let member = null;
 
-    const member = memberRes.rows[0] || null;
+    if (profile.active_church_id) {
+      const memberRes = await client.query(
+        `SELECT 
+           m.id,
+           m.status,
+           array_agg(r.name) FILTER (WHERE r.name IS NOT NULL) AS roles
+         FROM members m
+         LEFT JOIN member_roles mr ON mr.member_id = m.id
+         LEFT JOIN roles r ON r.id = mr.role_id
+         WHERE m.profile_id = $1
+           AND m.church_id = $2
+         GROUP BY m.id, m.status`,
+        [profile.id, profile.active_church_id]
+      );
 
-    // ---------------- Fetch contributions ----------------
+      member = memberRes.rows[0] || null;
+    }
+
+    /* ---------------- CONTRIBUTIONS ---------------- */
     const contribRes = await client.query(
       `SELECT fund_name, year, total_amount, yearly_total, overall_total
        FROM member_giving_summary
@@ -59,9 +59,10 @@ router.get("/", async (req, res) => {
       [profile.id]
     );
 
-    const isMember = !!profile.is_member;
+    /* ---------------- DERIVED STATE ---------------- */
+    const isMember = member?.status === "active";
 
-    // ---------------- Respond ----------------
+    /* ---------------- RESPONSE ---------------- */
     res.json({
       profile: {
         id: profile.id,
@@ -69,13 +70,16 @@ router.get("/", async (req, res) => {
         phone: profile.phone || null,
         email: profile.email || null,
 
-        // 🔥 NEW ROLE SYSTEM
-        roles: isMember ? member?.roles || ["member"] : ["guest"],
+        active_church_id: profile.active_church_id,
 
-        status: member?.status || "active",
-
-        church_id: profile.church_id || null,
+        // 🔥 derived, not stored
         is_member: isMember,
+
+        status: member?.status || "none",
+
+        roles: member?.roles?.length
+          ? member.roles
+          : ["guest"],
       },
 
       contributions: contribRes.rows || [],

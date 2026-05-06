@@ -3,49 +3,64 @@ import express from "express";
 
 const router = express.Router();
 
-/**
- * GET /dashboard/todays-birthdays
- * Returns members in the same church whose birthday is today
- */
 router.get("/", async (req, res) => {
   const supabase = req.supabase;
   const user = req.user;
 
-  if (!user?.church_id) {
-    return res.status(401).json({ error: "Unauthenticated" });
+  const churchId = user?.active_church_id;
+
+  if (!churchId) {
+    return res.status(401).json({ error: "No active church selected" });
   }
 
   try {
     const today = new Date();
-    const month = today.getUTCMonth(); // UTC to match birthday comparison
+    const month = today.getUTCMonth();
     const date = today.getUTCDate();
 
-    // Fetch all members with a birthday
+    /* ---------------- FETCH MEMBERS IN CHURCH ---------------- */
     const { data, error } = await supabase
-      .from("profiles")
-      .select("id, full_name, date_of_birth")
-      .eq("church_id", user.church_id)
-      .not("date_of_birth", "is", null);
+      .from("members")
+      .select(`
+        profile_id,
+        status,
+        profiles (
+          id,
+          full_name,
+          date_of_birth
+        )
+      `)
+      .eq("church_id", churchId)
+      .eq("status", "active"); // only real members
 
     if (error) {
       console.error("Today's birthdays error:", error);
       return res.status(500).json({ error: "Failed to fetch birthdays" });
     }
 
-    const todaysBirthdays = (data ?? []).filter((p) => {
-      const dob = new Date(p.date_of_birth);
-      if (isNaN(dob)) return false; // skip invalid dates
-      return dob.getUTCMonth() === month && dob.getUTCDate() === date;
+    /* ---------------- FILTER TODAY ---------------- */
+    const todaysBirthdays = (data ?? []).filter((m) => {
+      const dob = m.profiles?.date_of_birth;
+      if (!dob) return false;
+
+      const dateObj = new Date(dob);
+      if (isNaN(dateObj)) return false;
+
+      return (
+        dateObj.getUTCMonth() === month &&
+        dateObj.getUTCDate() === date
+      );
     });
 
-    // Map to a consistent shape for frontend
-    const result = todaysBirthdays.map((p) => ({
-      id: p.id,
-      full_name: p.full_name,
-      date_of_birth: p.date_of_birth,
+    /* ---------------- FORMAT ---------------- */
+    const result = todaysBirthdays.map((m) => ({
+      id: m.profiles.id,
+      full_name: m.profiles.full_name,
+      date_of_birth: m.profiles.date_of_birth,
     }));
 
     res.json(result);
+
   } catch (err) {
     console.error("Today's birthdays route error:", err);
     res.status(500).json({ error: "Server error" });

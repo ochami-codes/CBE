@@ -7,7 +7,7 @@ const router = express.Router();
    Middleware — Ensure Church Context Exists
 ===================================================== */
 const requireChurch = (req, res, next) => {
-  if (!req.user?.church_id || !req.user?.id) {
+  if (!req.user?.active_church_id || !req.user?.id) {
     return res.status(400).json({
       message: "Church context missing",
     });
@@ -22,7 +22,7 @@ router.get("/", requireChurch, async (req, res) => {
   const client = await pool.connect();
 
   try {
-    const churchId = req.user.church_id;
+    const churchId = req.user.active_church_id;
 
     const { rows } = await client.query(
       `SELECT
@@ -61,7 +61,7 @@ router.post("/:id/review", requireChurch, async (req, res) => {
   try {
     const requestId = req.params.id;
     const adminId = req.user.id;
-    const churchId = req.user.church_id;
+    const churchId = req.user.active_church_id;
     const { action } = req.body; // 'approved' | 'rejected'
 
     // -----------------------------
@@ -164,18 +164,8 @@ router.post("/:id/review", requireChurch, async (req, res) => {
            ON CONFLICT DO NOTHING`,
           [memberId]
         );
+       }
       }
-
-      // Update profile
-      await client.query(
-        `UPDATE profiles
-         SET is_member = true,
-             church_id = $1
-         WHERE id = $2`,
-        [churchId, request.profile_id]
-      );
-    }
-
     // -----------------------------
     // 6. Notify user
     // -----------------------------
@@ -242,7 +232,7 @@ router.post("/invite/:id", requireChurch, async (req, res) => {
   try {
     const profileId = req.params.id;
     const adminId = req.user.id;
-    const churchId = req.user.church_id;
+    const churchId = req.user.active_church_id;
 
     if (!adminId) {
       return res.status(401).json({ message: "Not authenticated" });
@@ -424,7 +414,7 @@ router.get("/non-members", requireChurch, async (req, res) => {
   const client = await pool.connect();
 
   try {
-    const churchId = req.user.church_id;
+    const churchId = req.user.active_church_id;
 
     const { rows } = await client.query(
       `SELECT
@@ -432,7 +422,6 @@ router.get("/non-members", requireChurch, async (req, res) => {
   p.full_name,
   p.email,
   p.phone,
-  p.is_member,
 
   mr.status AS membership_status,
   mr.id AS request_id
@@ -441,10 +430,14 @@ FROM profiles p
 
 LEFT JOIN membership_requests mr
   ON mr.profile_id = p.id
-  AND mr.church_id = p.church_id
+  AND mr.church_id = $1
 
-WHERE p.church_id = $1
-  AND p.is_member = false
+WHERE NOT EXISTS (
+  SELECT 1
+  FROM members m
+  WHERE m.profile_id = p.id
+    AND m.church_id = $1
+)
 
 ORDER BY p.full_name ASC`,
       [churchId]

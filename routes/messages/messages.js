@@ -10,9 +10,14 @@ const router = express.Router();
 router.post("/", async (req, res) => {
   const client = await pool.connect();
 console.log("BODY:", req.body);
-  const { id: profile_id, church_id } = req.user;
+  const profile_id = req.user.id;
+const church_id = req.user.active_church_id;
   const { content, recipient_profile_id, thread_id } = req.body;
-
+if (!church_id) {
+  return res.status(400).json({
+    message: "No active church selected",
+  });
+}
   try {
     await client.query("BEGIN");
 
@@ -157,8 +162,13 @@ console.log("BODY:", req.body);
 
 // GET /inbox
 router.get("/inbox", async (req, res) => {
-  const { id: profile_id, church_id } = req.user;
-
+  const profile_id = req.user.id;
+const church_id = req.user.active_church_id;
+if (!church_id) {
+  return res.status(400).json({
+    message: "No active church selected",
+  });
+}
   try {
     const result = await pool.query(
       `
@@ -276,7 +286,7 @@ const result = await pool.query(
 ========================================================= */
 router.post("/read", async (req, res) => {
   const { thread_id } = req.body;
-  const { id: profile_id } = req.user;
+  const profile_id = req.user.id;
 
   try {
     await pool.query(
@@ -299,7 +309,7 @@ router.post("/read", async (req, res) => {
 ========================================================= */
 router.get("/users", async (req, res) => {
   const supabase = req.supabase;
-  const { church_id, id: currentUserId } = req.user;
+  const { active_church_id, id: currentUserId } = req.user;
 
   try {
     const { data, error } = await supabase
@@ -315,7 +325,7 @@ router.get("/users", async (req, res) => {
           )
         )
       `)
-      .eq("church_id", church_id)
+      .eq("church_id", active_church_id)
       .neq("profile_id", currentUserId);
 
     if (error) throw error;
@@ -384,7 +394,8 @@ router.get("/users", async (req, res) => {
    GET /messages/unread-count
 ========================================================= */
 router.get("/unread-count", async (req, res) => {
-  const { id: profile_id, church_id } = req.user;
+  const profile_id = req.user.id;
+const church_id = req.user.active_church_id;
 
   try {
     const result = await pool.query(
@@ -419,7 +430,7 @@ router.get("/unread-count", async (req, res) => {
 
 // GET if users have a thread
 router.get("/thread-with/:user_id", async (req, res) => {
-  const { id: currentUserId } = req.user;
+  const currentUserId = req.user.id;
   const { user_id } = req.params;
 
   try {
