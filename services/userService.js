@@ -8,36 +8,24 @@ export const getUserContext = async (token) => {
     error: authError,
   } = await supabaseAdmin.auth.getUser(token);
 
-  if (authError || !authUser) {
-    return null;
-  }
-
-  const userId = authUser.id;
+  if (authError || !authUser) return null;
 
   /* ---------------- Profile ---------------- */
-  const { data: profile, error: profileError } = await supabaseAdmin
-    .from("profiles")
-    .select(`
-      id,
-      auth_user_id,
-      full_name,
-      email,
-      phone,
-      active_church_id
-    `)
-    .eq("auth_user_id", userId)
-    .maybeSingle();
+  const { data: profile, error: profileError } =
+    await supabaseAdmin
+      .from("profiles")
+      .select(`
+        id,
+        auth_user_id,
+        full_name,
+        email,
+        phone,
+        active_church_id
+      `)
+      .eq("auth_user_id", authUser.id)
+      .maybeSingle();
 
-  if (profileError) {
-    console.error("Profile fetch error:", profileError);
-    return null;
-  }
-
-  // ❌ NO FALLBACK CREATION — PROFILE MUST EXIST
-  if (!profile) {
-    console.warn("Profile missing for auth user:", userId);
-    return null;
-  }
+  if (profileError || !profile) return null;
 
   const profileId = profile.id;
 
@@ -49,20 +37,23 @@ export const getUserContext = async (token) => {
       status,
       church_id,
       member_roles (
-        roles (
-          name
-        )
+        roles (name)
       ),
-      churches (
-        name
-      )
+      churches (name)
     `)
     .eq("profile_id", profileId);
 
-  /* ---------------- Roles ---------------- */
+  const allMemberships = memberships || [];
+
+  /* ---------------- Active memberships only ---------------- */
+  const activeMemberships = allMemberships.filter(
+    (m) => m.status === "active"
+  );
+
+  /* ---------------- Roles (ONLY ACTIVE) ---------------- */
   const roleSet = new Set();
 
-  memberships?.forEach((m) => {
+  activeMemberships.forEach((m) => {
     const names =
       m.member_roles?.map((r) => r.roles?.name) || [];
 
@@ -78,7 +69,7 @@ export const getUserContext = async (token) => {
 
   /* ---------------- Active Church ---------------- */
   const activeMembership =
-    memberships?.find(
+    activeMemberships.find(
       (m) => m.church_id === profile.active_church_id
     ) || null;
 
@@ -113,27 +104,27 @@ export const getUserContext = async (token) => {
       "User",
 
     roles,
+    primary_role: roles[0],
     permissions,
-    role_name: roles[0],
 
-    memberships:
-      memberships?.map((m) => ({
-        id: m.id,
-        church_id: m.church_id,
-        church_name: m.churches?.name,
-        status: m.status,
-        roles:
-          m.member_roles?.map(
-            (r) => r.roles?.name
-          ) || [],
-      })) || [],
+    memberships: allMemberships.map((m) => ({
+      id: m.id,
+      church_id: m.church_id,
+      church_name: m.churches?.name,
+      status: m.status,
+      roles:
+        m.member_roles?.map(
+          (r) => r.roles?.name
+        ) || [],
+    })),
 
+    active_church_id: profile.active_church_id || null,
     active_church: activeChurch,
 
-    is_member: (memberships?.length || 0) > 0,
+    is_member: activeMemberships.length > 0,
 
     membership_status:
-      (memberships?.length || 0) > 0
+      activeMemberships.length > 0
         ? "approved"
         : latestRequest?.membership_request_status ||
           "none",
