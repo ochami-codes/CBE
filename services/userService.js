@@ -68,18 +68,17 @@ export const getUserContext = async (token) => {
   const permissions = getUserPermissions(roles);
 
   /* ---------------- Active Church ---------------- */
-  const activeMembership =
-    activeMemberships.find(
-      (m) => m.church_id === profile.active_church_id
-    ) || null;
+  const currentChurchMembership =
+  allMemberships.find(
+    (m) => m.church_id === profile.active_church_id
+  ) || null;
 
-  const activeChurch = activeMembership
-    ? {
-        id: activeMembership.church_id,
-        name: activeMembership.churches?.name,
-      }
-    : null;
-
+  const activeChurch = profile.active_church_id
+  ? {
+      id: profile.active_church_id,
+      name: currentChurchMembership?.churches?.name || null,
+    }
+  : null;
   /* ---------------- Membership Requests ---------------- */
   const { data: requests } = await supabaseAdmin
     .from("membership_requests")
@@ -120,8 +119,10 @@ export const getUserContext = async (token) => {
 
     active_church_id: profile.active_church_id || null,
     active_church: activeChurch,
-
-    is_member: activeMemberships.length > 0,
+    active_membership_status:
+  currentChurchMembership?.status || "guest",
+   is_member:
+  currentChurchMembership?.status === "active",
 
     membership_status:
       activeMemberships.length > 0
