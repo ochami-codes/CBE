@@ -28,6 +28,7 @@ export async function authMiddleware(req, res, next) {
         id,
         auth_user_id,
         full_name,
+        phone,
         email,
         active_church_id
       `)
@@ -100,7 +101,7 @@ export async function authMiddleware(req, res, next) {
   const { data: requests } = await supabaseAdmin
     .from("membership_requests")
     .select("membership_request_status")
-    .eq("profile_id", profileId)
+    .eq("profile_id", profile.id)
     .order("membership_requested_at", {
       ascending: false,
     })
