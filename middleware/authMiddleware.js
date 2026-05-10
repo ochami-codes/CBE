@@ -92,28 +92,70 @@ export async function authMiddleware(req, res, next) {
           name: activeMembership.churches?.name,
         }
       : null;
+  const currentChurchMembership =
+  allMemberships.find(
+    (m) => m.church_id === profile.active_church_id
+  ) || null;
 
+  const { data: requests } = await supabaseAdmin
+    .from("membership_requests")
+    .select("membership_request_status")
+    .eq("profile_id", profileId)
+    .order("membership_requested_at", {
+      ascending: false,
+    })
+    .limit(1);
+
+  const latestRequest = requests?.[0] ?? null;
     /* ---------- Attach user ---------- */
-    req.user = {
-      id: profile.id,
-      auth_user_id: authUser.id,
-      email: profile.email || authUser.email,
-      full_name:
-        profile.full_name ||
-        authUser.email?.split("@")[0] ||
-        "Guest",
+   req.user = {
+  id: profile.id,
+  auth_user_id: authUser.id,
 
-      roles,
-      primary_role: roles[0],
-      permissions,
+  email: profile.email || authUser.email,
+  phone: profile.phone,
 
-      memberships: allMemberships,
-      active_church_id: profile.active_church_id || null,
-      active_church: activeChurch,
+  full_name:
+    profile.full_name ||
+    authUser.email?.split("@")[0] ||
+    "Guest",
 
-      is_member: allMemberships.length > 0,
-      email_confirmed_at: authUser.email_confirmed_at,
-    };
+  roles,
+  primary_role: roles[0],
+  permissions,
+
+  memberships: allMemberships.map((m) => ({
+    id: m.id,
+    church_id: m.church_id,
+    church_name: m.churches?.name,
+    status: m.status,
+    roles:
+      m.member_roles?.map(
+        (r) => r.roles?.name
+      ) || [],
+  })),
+
+  active_church_id:
+    profile.active_church_id || null,
+
+  active_church: activeChurch,
+
+  active_membership_status:
+    currentChurchMembership?.status || "guest",
+
+  is_member:
+    currentChurchMembership?.status ===
+    "active",
+
+  membership_status:
+    activeMemberships.length > 0
+      ? "approved"
+      : latestRequest?.membership_request_status ||
+        "none",
+
+  email_confirmed_at:
+    authUser.email_confirmed_at,
+};
 
     next();
   } catch (err) {

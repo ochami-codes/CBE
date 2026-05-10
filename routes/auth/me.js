@@ -1,31 +1,24 @@
 import express from "express";
-import { getUserContext } from "../../services/userService.js";
+import { authMiddleware } from "../../middleware/authMiddleware.js";
 
 const router = express.Router();
 
-router.get("/", async (req, res) => {
-  try {
-    const authHeader = req.headers.authorization;
+router.get(
+  "/",
+  authMiddleware,
+  async (req, res) => {
+    try {
+      return res.status(200).json({
+        user: req.user,
+      });
+    } catch (err) {
+      console.error("GET /auth/me error:", err);
 
-    if (!authHeader?.startsWith("Bearer ")) {
-      return res.status(401).json({ message: "Unauthorized" });
+      return res.status(500).json({
+        message: "Failed to load user",
+      });
     }
-
-    const token = authHeader.split(" ")[1];
-
-    const user = await getUserContext(token);
-
-    if (!user) {
-      return res.status(401).json({ message: "Invalid session" });
-    }
-
-    return res.status(200).json({ user });
-  } catch (err) {
-    console.error("GET /auth/me error:", err);
-    return res.status(500).json({
-      message: "Failed to load user",
-    });
   }
-});
+);
 
 export default router;
