@@ -9,17 +9,17 @@ export async function authMiddleware(req, res, next) {
       return res.status(401).json({ message: "Missing or invalid token" });
     }
 
-    const token = authHeader.split(" ")[1];
+const token = authHeader.split(" ")[1];
 
-    /* ---------- Verify Token ---------- */
-    const { data, error } = await supabaseAuth.auth.getUser(token);
+/* ---------- Verify Token ---------- */
+const { data: { user: authUser }, error: authError } = await supabaseAuth.auth.getUser(token);
 
-console.log("SUPABASE ERROR:", error);
-console.log("SUPABASE USER:", data?.user);
+console.log("SUPABASE ERROR:", authError);
+console.log("SUPABASE USER:", authUser);
 
-    if (authError || !authUser) {
-      return res.status(401).json({ message: "Invalid or expired token" });
-    }
+if (authError ||!authUser) {
+  return res.status(401).json({ message: "Invalid or expired token" });
+}
 
     /* ---------- Fetch Profile ---------- */
     const { data: profile, error: profileError } = await supabaseAdmin
