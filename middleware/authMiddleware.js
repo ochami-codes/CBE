@@ -12,10 +12,10 @@ export async function authMiddleware(req, res, next) {
     const token = authHeader.split(" ")[1];
 
     /* ---------- Verify Token ---------- */
-    const {
-      data: { user: authUser },
-      error: authError,
-    } = await supabaseAuth.auth.getUser(token);
+    const { data, error } = await supabaseAuth.auth.getUser(token);
+
+console.log("SUPABASE ERROR:", error);
+console.log("SUPABASE USER:", data?.user);
 
     if (authError || !authUser) {
       return res.status(401).json({ message: "Invalid or expired token" });
