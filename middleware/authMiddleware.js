@@ -82,20 +82,23 @@ export async function authMiddleware(req, res, next) {
     const permissions = getUserPermissions(roles);
 
     /* ---------- ACTIVE CHURCH (correct logic) ---------- */
-    const activeMembership =
-      activeMemberships.find(
-        (m) => m.church_id === profile.active_church_id
-      ) || activeMemberships[0] || null;
-
-    const activeChurch = activeMembership
-      ? {
-          id: activeMembership.church_id,
-          name: activeMembership.churches?.name,
-        }
-      : null;
-  const currentChurchMembership =
-  allMemberships.find(
+const activeMembership =
+  activeMemberships.find(
     (m) => m.church_id === profile.active_church_id
+  ) || activeMemberships[0] || null;
+
+const resolvedActiveChurchId =
+  activeMembership?.church_id || null;
+
+const activeChurch = activeMembership
+  ? {
+      id: activeMembership.church_id,
+      name: activeMembership.churches?.name,
+    }
+  : null;
+ const currentChurchMembership =
+  allMemberships.find(
+    (m) => m.church_id === resolvedActiveChurchId
   ) || null;
 
   const { data: requests } = await supabaseAdmin
@@ -136,8 +139,7 @@ export async function authMiddleware(req, res, next) {
       ) || [],
   })),
 
-  active_church_id:
-    profile.active_church_id || null,
+  active_church_id: resolvedActiveChurchId,
 
   active_church: activeChurch,
 
