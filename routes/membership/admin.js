@@ -147,10 +147,10 @@ router.post("/:id/review", requireChurch, async (req, res) => {
 
       if (memberRows.length === 0) {
         const { rows: insertRows } = await client.query(
-          `INSERT INTO members (profile_id, church_id)
-           VALUES ($1, $2)
+          `INSERT INTO members (profile_id, church_id, status)
+           VALUES ($1, $2, $3)
            RETURNING id`,
-          [request.profile_id, churchId]
+          [request.profile_id, churchId, "active"]
         );
 
         const memberId = insertRows[0].id;
