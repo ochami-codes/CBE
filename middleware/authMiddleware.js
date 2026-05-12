@@ -82,25 +82,27 @@ if (authError ||!authUser) {
     const permissions = getUserPermissions(roles);
 
     /* ---------- ACTIVE CHURCH (correct logic) ---------- */
-const activeMembership =
-  activeMemberships.find(
-    (m) => m.church_id === profile.active_church_id
-  ) || activeMemberships[0] || null;
-
 const resolvedActiveChurchId =
-  activeMembership?.church_id || null;
+  profile.active_church_id || null;
 
-const activeChurch = activeMembership
-  ? {
-      id: activeMembership.church_id,
-      name: activeMembership.churches?.name,
-    }
-  : null;
- const currentChurchMembership =
+const currentChurchMembership =
   allMemberships.find(
     (m) => m.church_id === resolvedActiveChurchId
   ) || null;
 
+let activeChurch = null;
+
+if (resolvedActiveChurchId) {
+  const { data: church } = await supabaseAdmin
+    .from("churches")
+    .select("id, name")
+    .eq("id", resolvedActiveChurchId)
+    .maybeSingle();
+
+  if (church) {
+    activeChurch = church;
+  }
+}
   const { data: requests } = await supabaseAdmin
     .from("membership_requests")
     .select("membership_request_status")
