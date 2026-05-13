@@ -1,73 +1,82 @@
 // middleware/buildUserContext.js
-import { normalizeRole, getUserPermissions } from "../config/roles.js";
+// middleware/buildUserContext.js
 
-export function buildUserContext(req, res, next) {
-  const activeChurchId = req.profile.active_church_id;
+import {
+  normalizeRole,
+  getUserPermissions,
+} from "../config/roles.js";
 
-  /* -------------------------------
-     ACTIVE MEMBERSHIP (derived)
-  ------------------------------- */
+export function buildUserContext(
+  req,
+  res,
+  next
+) {
+  const activeChurchId =
+    req.profile.active_church_id;
+
   const activeMembership =
     req.memberships.find(
-      (m) => m.church_id === activeChurchId
+      (m) =>
+        m.church_id ===
+        activeChurchId
     ) || null;
 
-  /* -------------------------------
-     ROLE COLLECTION (from ALL memberships)
-  ------------------------------- */
-  const roleSet = new Set();
+  /* --------------------------------
+     ACTIVE CHURCH ROLES ONLY
+  -------------------------------- */
 
-  req.memberships
-    .filter((m) => m.status === "active")
-    .forEach((m) => {
-      (m.member_roles || []).forEach((r) => {
-        roleSet.add(normalizeRole(r.roles?.name));
-      });
-    });
+  const roleArray =
+    activeMembership?.member_roles?.map(
+      (r) =>
+        normalizeRole(
+          r.roles?.name
+        )
+    ) || ["guest"];
 
-  const roles =
-    roleSet.size > 0 ? [...roleSet] : ["guest"];
+  const permissions =
+    getUserPermissions(
+      roleArray
+    );
 
-  /* -------------------------------
-     REQUESTS BY CHURCH (array-first view)
-  ------------------------------- */
-  const requestsByChurch = req.membershipRequests || [];
-
-  /* -------------------------------
-     FINAL USER OBJECT
-  ------------------------------- */
   req.user = {
     id: req.profile.id,
-    auth_user_id: req.authUser.id,
+
+    auth_user_id:
+      req.authUser.id,
 
     email: req.profile.email,
-    full_name: req.profile.full_name,
 
-    /* -------------------------------
-       CORE ARRAYS (source of truth)
-    ------------------------------- */
-    memberships: req.memberships,
-    membership_requests: requestsByChurch,
-    roles,
+    full_name:
+      req.profile.full_name,
 
-    /* -------------------------------
-       ACTIVE CONTEXT (derived)
-    ------------------------------- */
-    active_church_id: activeChurchId,
-    active_membership: activeMembership,
+    memberships:
+      req.memberships,
+
+    membership_requests:
+      req.membershipRequests,
+
+    active_church_id:
+      activeChurchId,
+
+    active_membership:
+      activeMembership,
+
+    /* church-scoped */
+    roles: roleArray,
+
+    permissions,
+
     active_membership_status:
-      activeMembership?.status || "guest",
+      activeMembership?.status ||
+      "guest",
 
-    /* -------------------------------
-       PERMISSIONS (derived from roles)
-    ------------------------------- */
-    permissions: getUserPermissions(roles),
+    is_member:
+      activeMembership?.status ===
+      "active",
 
-    /* -------------------------------
-       FLAGS (UI convenience only)
-    ------------------------------- */
-    is_member: activeMembership?.status === "active",
-    is_pending: activeMembership?.status === "requested",
+    is_pending:
+      activeMembership?.status ===
+      "requested",
   };
 
   next();
