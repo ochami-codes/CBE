@@ -1,11 +1,11 @@
 import express from "express";
-import { authMiddleware } from "../../middleware/authMiddleware.js";
+import { userContext } from "../../middleware/userContext.js";
 
 const router = express.Router();
 
 router.get(
   "/",
-  authMiddleware,
+  userContext,
   async (req, res) => {
     try {
       return res.status(200).json({

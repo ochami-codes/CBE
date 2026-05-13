@@ -2,7 +2,7 @@
 import "dotenv/config";
 import express from "express";
 import cors from "cors";
-
+import { userContext } from "./middleware/userContext.js";
 import authRoutes from "./routes/auth/index.js";
 import activeChurch from "./routes/church/activeChurch.js";
 import createChurch from "./routes/church/createChurch.js";
@@ -52,29 +52,29 @@ app.use("/conferences", conferenceRoutes);
 /* ------------------ Dashboard routes (auth optional inside route) ------------------ */
 app.use("/dashboard/daily-verse", verseRoutes);
 app.use("/dashboard/announcements", announcementRoutes);
-app.use("/dashboard/upcoming-birthdays",authMiddleware, upcomingBirthdays);
-app.use("/dashboard/my-birthday", authMiddleware, myBirthdayRoutes);
-app.use("/dashboard/todays-birthdays", authMiddleware, todaysBirthdayRoutes);
-app.use("/notifications", authMiddleware, notificationRoutes);
-app.use("/messages", authMiddleware, messageRoutes);
+app.use("/dashboard/upcoming-birthdays",userContext, upcomingBirthdays);
+app.use("/dashboard/my-birthday", userContext, myBirthdayRoutes);
+app.use("/dashboard/todays-birthdays", userContext, todaysBirthdayRoutes);
+app.use("/notifications", userContext, notificationRoutes);
+app.use("/messages", userContext, messageRoutes);
 /* ------------------ Authenticated routes ------------------ */
-app.use("/profile", authMiddleware, profileRoutes);
-app.use("/membership-requests", authMiddleware, membershipRoutes);
-app.use("/donations", authMiddleware, donationRoutes);
-app.use("/create-church", authMiddleware, createChurch);
-app.use("/active-church", authMiddleware, activeChurch);
-app.use("/pastor", authMiddleware, pastorRoutes);
-app.use("/members", authMiddleware, memberRoutes);
-app.use("/departments", authMiddleware, departmentRoutes);
-app.use("/attendance", authMiddleware, attendanceRoutes);
-app.use("/children", authMiddleware, childrenRoutes);
-app.use("/treasury", authMiddleware, treasuryRoutes);
-app.use("/treasury/transactions", authMiddleware, treasuryTransactionRoutes);
-app.use("/role-requests", authMiddleware, myRequest);
+app.use("/profile", userContext, profileRoutes);
+app.use("/membership-requests", userContext, membershipRoutes);
+app.use("/donations", userContext, donationRoutes);
+app.use("/create-church", userContext, createChurch);
+app.use("/active-church", userContext, activeChurch);
+app.use("/pastor", userContext, pastorRoutes);
+app.use("/members", userContext, memberRoutes);
+app.use("/departments", userContext, departmentRoutes);
+app.use("/attendance", userContext, attendanceRoutes);
+app.use("/children", userContext, childrenRoutes);
+app.use("/treasury", userContext, treasuryRoutes);
+app.use("/treasury/transactions", userContext, treasuryTransactionRoutes);
+app.use("/role-requests", userContext, myRequest);
 
 /* ------------------ Admin routes ------------------ */
-app.use("/admin", authMiddleware, adminRoutes);
-app.use("/admin/membership-requests", authMiddleware, adminMembershipRoutes);
+app.use("/admin", userContext, adminRoutes);
+app.use("/admin/membership-requests", userContext, adminMembershipRoutes);
 
 /* ------------------ Health check ------------------ */
 app.get("/", (req, res) => {
