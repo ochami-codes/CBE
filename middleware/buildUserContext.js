@@ -4,24 +4,38 @@ import { normalizeRole, getUserPermissions } from "../config/roles.js";
 export function buildUserContext(req, res, next) {
   const activeChurchId = req.profile.active_church_id;
 
+  /* -------------------------------
+     ACTIVE MEMBERSHIP (derived)
+  ------------------------------- */
   const activeMembership =
     req.memberships.find(
       (m) => m.church_id === activeChurchId
-    );
+    ) || null;
 
-  const roles = new Set();
+  /* -------------------------------
+     ROLE COLLECTION (from ALL memberships)
+  ------------------------------- */
+  const roleSet = new Set();
 
   req.memberships
     .filter((m) => m.status === "active")
     .forEach((m) => {
       (m.member_roles || []).forEach((r) => {
-        roles.add(normalizeRole(r.roles?.name));
+        roleSet.add(normalizeRole(r.roles?.name));
       });
     });
 
-  const roleArray =
-    roles.size > 0 ? [...roles] : ["guest"];
+  const roles =
+    roleSet.size > 0 ? [...roleSet] : ["guest"];
 
+  /* -------------------------------
+     REQUESTS BY CHURCH (array-first view)
+  ------------------------------- */
+  const requestsByChurch = req.membershipRequests || [];
+
+  /* -------------------------------
+     FINAL USER OBJECT
+  ------------------------------- */
   req.user = {
     id: req.profile.id,
     auth_user_id: req.authUser.id,
@@ -29,19 +43,31 @@ export function buildUserContext(req, res, next) {
     email: req.profile.email,
     full_name: req.profile.full_name,
 
-    active_church_id: activeChurchId,
-
+    /* -------------------------------
+       CORE ARRAYS (source of truth)
+    ------------------------------- */
     memberships: req.memberships,
-    membership_requests: req.membershipRequests,
+    membership_requests: requestsByChurch,
+    roles,
 
-    active_membership: activeMembership || null,
-
-    roles: roleArray,
-    permissions: getUserPermissions(roleArray),
-
-    is_member: activeMembership?.status === "active",
+    /* -------------------------------
+       ACTIVE CONTEXT (derived)
+    ------------------------------- */
+    active_church_id: activeChurchId,
+    active_membership: activeMembership,
     active_membership_status:
       activeMembership?.status || "guest",
+
+    /* -------------------------------
+       PERMISSIONS (derived from roles)
+    ------------------------------- */
+    permissions: getUserPermissions(roles),
+
+    /* -------------------------------
+       FLAGS (UI convenience only)
+    ------------------------------- */
+    is_member: activeMembership?.status === "active",
+    is_pending: activeMembership?.status === "requested",
   };
 
   next();
