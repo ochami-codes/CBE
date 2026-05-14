@@ -1,5 +1,4 @@
 // middleware/buildUserContext.js
-// middleware/buildUserContext.js
 
 import {
   normalizeRole,
@@ -14,11 +13,27 @@ export function buildUserContext(
   const activeChurchId =
     req.profile.active_church_id;
 
+  /* --------------------------------
+     ACTIVE MEMBERSHIP
+  -------------------------------- */
+
   const activeMembership =
     req.memberships.find(
       (m) =>
         m.church_id ===
         activeChurchId
+    ) || null;
+
+  /* --------------------------------
+     ACTIVE MEMBERSHIP REQUEST
+  -------------------------------- */
+
+  const activeMembershipRequest =
+    req.membershipRequests.find(
+      (r) =>
+        r.church_id ===
+          activeChurchId &&
+        r.status === "requested"
     ) || null;
 
   /* --------------------------------
@@ -61,7 +76,13 @@ export function buildUserContext(
     active_membership:
       activeMembership,
 
-    /* church-scoped */
+    active_membership_request:
+      activeMembershipRequest,
+
+    /* --------------------------------
+       CHURCH-SCOPED AUTH
+    -------------------------------- */
+
     roles: roleArray,
 
     permissions,
@@ -74,9 +95,9 @@ export function buildUserContext(
       activeMembership?.status ===
       "active",
 
+    /* request-based */
     is_pending:
-      activeMembership?.status ===
-      "requested",
+      !!activeMembershipRequest,
   };
 
   next();
