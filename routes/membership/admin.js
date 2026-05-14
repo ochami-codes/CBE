@@ -1,6 +1,8 @@
 import express from "express";
 import { pool } from "../../db.js";
-
+import {
+  bumpProfileVersionTx
+} from "../../utils/profileVersion.js";
 const router = express.Router();
 
 /* =====================================================
@@ -204,7 +206,10 @@ router.post("/:id/review", requireChurch, async (req, res) => {
       )`,
       [request.profile_id, churchId, action, requestId]
     );
-
+    await bumpProfileVersionTx(
+  client,
+  request.profile_id
+);
     await client.query("COMMIT");
 
     res.json({
