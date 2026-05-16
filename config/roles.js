@@ -136,7 +136,6 @@ export const ROLE_PERMISSIONS = {
 // ROLE LABELS
 // ------------------------------------
 export const ROLES = {
-  guest: { label: "Guest" },
 
   admin: { label: "Admin" },
   pastor: { label: "Pastor" },
