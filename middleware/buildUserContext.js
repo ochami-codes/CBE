@@ -72,7 +72,7 @@ export function buildUserContext(
 
     active_church_id:
       activeChurchId,
-
+   church_id: activeChurchId, // an alias( tempirary)
     active_membership:
       activeMembership,
 

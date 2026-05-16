@@ -1,26 +1,55 @@
+// routes/members.js
+
 import express from "express";
 
 const router = express.Router();
 
-/* ---------------- Permission Helper ---------------- */
+/* =====================================================
+   HELPERS
+===================================================== */
+
 function requirePermission(user, permission) {
   if (!user) return false;
 
-  if (user.roles?.includes("admin")) return true;
+  if (user.roles?.includes("admin")) {
+    return true;
+  }
 
   return user.permissions?.includes(permission);
 }
 
-/**
- * GET /members
- */
+function normalizePhone(phone) {
+  if (!phone) return null;
+
+  phone = phone.replace(/\D/g, "");
+
+  if (phone.startsWith("0")) {
+    phone = "254" + phone.slice(1);
+  } else if (
+    phone.startsWith("7") &&
+    phone.length === 9
+  ) {
+    phone = "254" + phone;
+  }
+
+  return phone;
+}
+
+/* =====================================================
+   GET /members
+===================================================== */
+
 router.get("/", async (req, res) => {
   const supabase = req.supabase;
-  const { church_id } = req.user;
-  const { search, department } = req.query;
+  const churchId =
+    req.user.active_church_id;
+
+  const {
+    search,
+    department,
+  } = req.query;
 
   try {
-    /* ---------------- Base Query ---------------- */
     let query = supabase
       .from("members")
       .select(`
@@ -49,92 +78,128 @@ router.get("/", async (req, res) => {
           )
         )
       `)
-      .eq("church_id", church_id)
+      .eq("church_id", churchId)
       .order("full_name", {
         ascending: true,
         foreignTable: "profiles",
       });
 
-    /* ---------------- Search Filter ---------------- */
     if (search?.trim()) {
       query = query.or(
-        `full_name.ilike.%${search}%,phone.ilike.%${search}%`,
-        { foreignTable: "profiles" }
+        `full_name.ilike.%${search}%,
+         phone.ilike.%${search}%`,
+        {
+          foreignTable:
+            "profiles",
+        }
       );
     }
 
-    /* ---------------- Execute Query ---------------- */
-    const { data, error } = await query;
+    const { data, error } =
+      await query;
+
     if (error) throw error;
 
-    /* ---------------- Transform ---------------- */
-    let members = (data || []).map((m) => {
-      const departments =
-        m.member_departments?.map((md) => md.departments?.name) || [];
+    let members =
+      (data || []).map((m) => {
+        const departments =
+          m.member_departments?.map(
+            (d) =>
+              d.departments?.name
+          ) || [];
 
-      const roles =
-        m.member_roles?.map((mr) => mr.roles?.name) || [];
+        const roles =
+          m.member_roles?.map(
+            (r) =>
+              r.roles?.name
+          ) || [];
 
-      return {
-        id: m.id,
-        profile_id: m.profile_id,
+        return {
+          id: m.id,
+          profile_id:
+            m.profile_id,
 
-        full_name: m.profiles?.full_name || null,
-        phone: m.profiles?.phone || null,
-        gender: m.profiles?.gender || null,
-        is_system_user: m.profiles?.is_system_user || false,
+          full_name:
+            m.profiles?.full_name,
 
-        departments,
-        roles,
-        primary_role: roles[0] || "member",
+          phone:
+            m.profiles?.phone,
 
-        status: m.status,
-        active: m.status === "active",
+          gender:
+            m.profiles?.gender,
 
-        created_at: m.created_at,
-      };
-    });
+          is_system_user:
+            m.profiles
+              ?.is_system_user ||
+            false,
 
-    /* ---------------- Department Filter (optional) ---------------- */
+          departments,
+
+          roles,
+
+          primary_role:
+            roles[0] ||
+            "member",
+
+          status: m.status,
+
+          active:
+            m.status ===
+            "active",
+
+          created_at:
+            m.created_at,
+        };
+      });
+
     if (department) {
-      members = members.filter((m) =>
-        m.departments.some((d) => d === department)
-      );
+      members =
+        members.filter((m) =>
+          m.departments.includes(
+            department
+          )
+        );
     }
 
-    return res.json({ members });
+    return res.json({
+      members,
+    });
   } catch (err) {
-    console.error("Fetch members error:", err);
-    return res.status(500).json({ message: "Failed to fetch members" });
+    console.error(
+      "Fetch members:",
+      err
+    );
+
+    return res.status(500).json({
+      message:
+        "Failed to fetch members",
+    });
   }
 });
-/* ---------------- Phone Normalization ---------------- */
-function normalizePhone(phone) {
-  if (!phone) return null;
 
-  phone = phone.replace(/\D/g, "");
+/* =====================================================
+   POST /members
+===================================================== */
 
-  if (phone.startsWith("0")) {
-    phone = "254" + phone.slice(1);
-  } else if (phone.startsWith("7") && phone.length === 9) {
-    phone = "254" + phone;
-  } else if (phone.startsWith("+254")) {
-    phone = phone.slice(1);
-  }
-
-  return phone;
-}
-
-/**
- * POST /members
- */
 router.post("/", async (req, res) => {
-  const supabase = req.supabase;
-  const { church_id } = req.user;
+  const supabase =
+    req.supabase;
 
-  /* 🔒 Permission check (NEW PATTERN) */
-  if (!requirePermission(req.user, "manage_members")) {
-    return res.status(403).json({ message: "Forbidden" });
+  const churchId =
+    req.user.active_church_id;
+
+  if (
+    !requirePermission(
+      req.user,
+      "manage_members"
+    )
+  ) {
+    return res
+      .status(403)
+      .json({
+        message:
+          "Forbidden",
+      });
   }
 
   const {
@@ -147,138 +212,235 @@ router.post("/", async (req, res) => {
   } = req.body;
 
   if (!department) {
-    return res.status(400).json({ message: "Department is required" });
+    return res
+      .status(400)
+      .json({
+        message:
+          "Department required",
+      });
   }
 
-  if (!profile_id && (!full_name || !phone)) {
-    return res.status(400).json({
-      message: "Provide profile_id OR full_name + phone",
-    });
-  }
-
-  const normalizedPhone = normalizePhone(phone);
+  const normalizedPhone =
+    normalizePhone(phone);
 
   try {
-    const { data, error } = await supabase.rpc("add_member_rpc", {
-      p_church_id: church_id,
-      p_profile_id: profile_id || null,
-      p_full_name: full_name || null,
-      p_gender: gender || null,
-      p_phone: normalizedPhone || null,
-      p_department_code: department,
-      p_role_name: role_name,
-    });
+    const {
+      data,
+      error,
+    } = await supabase.rpc(
+      "add_member_rpc",
+      {
+        p_church_id:
+          churchId,
+
+        p_profile_id:
+          profile_id ||
+          null,
+
+        p_full_name:
+          full_name ||
+          null,
+
+        p_gender:
+          gender ||
+          null,
+
+        p_phone:
+          normalizedPhone ||
+          null,
+
+        p_department_code:
+          department,
+
+        p_role_name:
+          role_name,
+      }
+    );
 
     if (error) {
-      return res.status(400).json({ message: error.message });
+      return res
+        .status(400)
+        .json({
+          message:
+            error.message,
+        });
     }
 
-    return res.status(201).json(data);
+    return res
+      .status(201)
+      .json(data);
   } catch (err) {
-    console.error("RPC error:", err);
-    return res.status(500).json({ message: "Failed to add member" });
-  }
-});
+    console.error(
+      "Add member:",
+      err
+    );
 
-/**
- * PUT /members/:id
- */
-router.put("/:id", async (req, res) => {
-  const supabase = req.supabase;
-  const { id } = req.params;
-  const { church_id } = req.user;
-
-  /* 🔒 Admin-level action */
-  if (!requirePermission(req.user, "access_admin_dashboard")) {
-    return res.status(403).json({ message: "Admins only" });
-  }
-
-  const { full_name, department, role_name, email } = req.body;
-
-  if (!full_name && !department && !role_name && !email) {
-    return res.status(400).json({ message: "Nothing to update" });
-  }
-
-  try {
-    const { data, error } = await supabase.rpc("update_member_rpc", {
-      p_member_id: id,
-      p_church_id: church_id,
-      p_full_name: full_name || null,
-      p_department_code: department || null,
-      p_role_name: role_name || null,
-      p_email: email || null,
+    return res.status(500).json({
+      message:
+        "Failed to add member",
     });
+  }
+});
 
-    if (error) {
-      return res.status(400).json({ message: error.message });
+/* =====================================================
+   PUT /members/:id
+===================================================== */
+
+router.put(
+  "/:id",
+  async (req, res) => {
+    const supabase =
+      req.supabase;
+
+    const churchId =
+      req.user.active_church_id;
+
+    const { id } =
+      req.params;
+
+    if (
+      !requirePermission(
+        req.user,
+        "access_admin_dashboard"
+      )
+    ) {
+      return res
+        .status(403)
+        .json({
+          message:
+            "Admins only",
+        });
     }
 
-    return res.json(data);
-  } catch (err) {
-    console.error("Update member error:", err);
-    return res.status(500).json({ message: "Failed to update member" });
+    const {
+      full_name,
+      department,
+      role_name,
+      email,
+    } = req.body;
+
+    try {
+      const {
+        data,
+        error,
+      } =
+        await supabase.rpc(
+          "update_member_rpc",
+          {
+            p_member_id:
+              id,
+
+            p_church_id:
+              churchId,
+
+            p_full_name:
+              full_name ||
+              null,
+
+            p_department_code:
+              department ||
+              null,
+
+            p_role_name:
+              role_name ||
+              null,
+
+            p_email:
+              email ||
+              null,
+          }
+        );
+
+      if (error) {
+        return res
+          .status(400)
+          .json({
+            message:
+              error.message,
+          });
+      }
+
+      return res.json(data);
+    } catch (err) {
+      console.error(
+        "Update member:",
+        err
+      );
+
+      return res.status(500).json({
+        message:
+          "Failed to update member",
+      });
+    }
   }
-});
+);
 
-/**
- * DELETE /members/:id
- */
-router.delete("/:id", async (req, res) => {
-  const supabase = req.supabase;
-  const { id } = req.params;
-  const { church_id } = req.user;
+/* =====================================================
+   DELETE /members/:id
+===================================================== */
 
-  /* 🔒 Permission check */
-  if (!requirePermission(req.user, "manage_members")) {
-    return res.status(403).json({ message: "Forbidden" });
+router.delete(
+  "/:id",
+  async (req, res) => {
+    const supabase =
+      req.supabase;
+
+    const churchId =
+      req.user.active_church_id;
+
+    const { id } =
+      req.params;
+
+    if (
+      !requirePermission(
+        req.user,
+        "manage_members"
+      )
+    ) {
+      return res
+        .status(403)
+        .json({
+          message:
+            "Forbidden",
+        });
+    }
+
+    try {
+      const { error } =
+        await supabase
+          .from("members")
+          .update({
+            status:
+              "removed",
+
+            status_reason:
+              "manual removal",
+          })
+          .eq("id", id)
+          .eq(
+            "church_id",
+            churchId
+          );
+
+      if (error)
+        throw error;
+
+      return res.json({
+        message:
+          "Member removed",
+      });
+    } catch (err) {
+      console.error(
+        "Delete member:",
+        err
+      );
+
+      return res.status(500).json({
+        message:
+          "Failed to remove member",
+      });
+    }
   }
-
-  try {
-    const { error } = await supabase
-  .from("members")
-  .update({
-    status: "removed",
-    status_reason: "manual removal",
-  })
-  .eq("id", id)
-  .eq("church_id", church_id);
-
-    if (error) throw error;
-
-    return res.json({ message: "Member removed successfully" });
-  } catch (err) {
-    console.error("Delete member error:", err);
-    return res.status(500).json({ message: "Failed to remove member" });
-  }
-});
-
-/**
- * GET /members/profiles/search
- */
-router.get("/profiles/search", async (req, res) => {
-  const supabase = req.supabase;
-  const { church_id } = req.user;
-  const { q } = req.query;
-
-  if (!q || q.length < 2) {
-    return res.json({ profiles: [] });
-  }
-
-  try {
-    const { data, error } = await supabase
-      .from("profiles")
-      .select("id, full_name, phone, email")
-      .eq("church_id", church_id)
-      .or(`full_name.ilike.%${q}%,phone.ilike.%${q}%,email.ilike.%${q}%`)
-      .limit(10);
-
-    if (error) throw error;
-
-    return res.json({ profiles: data ?? [] });
-  } catch (err) {
-    console.error("Search profiles error:", err);
-    return res.status(500).json({ message: "Failed to search users" });
-  }
-});
+);
 
 export default router;
