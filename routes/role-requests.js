@@ -17,15 +17,15 @@ router.post("/", async (req, res) => {
   try {
     let { requested_role } = req.body;
 
-    const profileId = req.user?.id;
     const churchId = req.user?.active_church_id;
     const memberships = req.user?.memberships || [];
 
-    // ------------------------------------
-    // VALIDATIONS
-    // ------------------------------------
-    if (!profileId) {
-      return res.status(401).json({ error: "Unauthenticated" });
+    /* ---------------- Validations ---------------- */
+
+    if (!req.user?.id) {
+      return res
+        .status(401)
+        .json({ error: "Unauthenticated" });
     }
 
     if (!churchId) {
@@ -35,12 +35,15 @@ router.post("/", async (req, res) => {
     }
 
     const activeMembership = memberships.find(
-      (m) => m.church_id === churchId && m.status === "active"
+      (m) =>
+        m.church_id === churchId &&
+        m.status === "active"
     );
 
     if (!activeMembership) {
       return res.status(403).json({
-        error: "Only active members can request roles",
+        error:
+          "Only active members can request roles",
       });
     }
 
@@ -50,7 +53,8 @@ router.post("/", async (req, res) => {
       });
     }
 
-    requested_role = normalizeRole(requested_role);
+    requested_role =
+      normalizeRole(requested_role);
 
     if (!isValidRole(requested_role)) {
       return res.status(400).json({
@@ -58,58 +62,86 @@ router.post("/", async (req, res) => {
       });
     }
 
-    if (!REQUESTABLE_ROLES.includes(requested_role)) {
+    if (
+      !REQUESTABLE_ROLES.includes(
+        requested_role
+      )
+    ) {
       return res.status(403).json({
-        error: "You cannot request this role",
+        error:
+          "You cannot request this role",
       });
     }
+
+    const memberId = activeMembership.id;
 
     await client.query("BEGIN");
 
-    // ------------------------------------
-    // 1. Prevent duplicate pending request
-    // ------------------------------------
-    const existing = await client.query(
-      `SELECT 1
-       FROM role_requests
-       WHERE profile_id = $1
-         AND church_id = $2
-         AND requested_role = $3
-         AND role_request_status = 'pending'
-       LIMIT 1`,
-      [profileId, churchId, requested_role]
-    );
+    /* ---------------- Prevent duplicates ---------------- */
 
-    if (existing.rows.length > 0) {
+    const existing =
+      await client.query(
+        `
+        SELECT 1
+        FROM role_requests
+        WHERE member_id = $1
+          AND church_id = $2
+          AND requested_role = $3
+          AND role_request_status = 'pending'
+        LIMIT 1
+        `,
+        [
+          memberId,
+          churchId,
+          requested_role,
+        ]
+      );
+
+    if (existing.rows.length) {
       await client.query("ROLLBACK");
+
       return res.status(400).json({
-        error: "You already have a pending request for this role",
+        error:
+          "You already have a pending request for this role",
       });
     }
 
-    // ------------------------------------
-    // 2. Create request
-    // ------------------------------------
-    const insertRes = await client.query(
-      `INSERT INTO role_requests (
-        profile_id,
-        requested_role,
-        church_id,
-        role_request_status,
-        role_requested_at
-      )
-      VALUES ($1, $2, $3, 'pending', NOW())
-      RETURNING *`,
-      [profileId, requested_role, churchId]
-    );
+    /* ---------------- Create request ---------------- */
 
-    const request = insertRes.rows[0];
+    const insertRes =
+      await client.query(
+        `
+        INSERT INTO role_requests (
+          member_id,
+          requested_role,
+          church_id,
+          role_request_status,
+          role_requested_at
+        )
+        VALUES (
+          $1,
+          $2,
+          $3,
+          'pending',
+          NOW()
+        )
+        RETURNING *
+        `,
+        [
+          memberId,
+          requested_role,
+          churchId,
+        ]
+      );
 
-    // ------------------------------------
-    // 3. Notify admins
-    // ------------------------------------
+    const request =
+      insertRes.rows[0];
+
+    /* ---------------- Notify admins ---------------- */
+
     await client.query(
-      `INSERT INTO notifications (
+      `
+      INSERT INTO notifications (
         user_id,
         church_id,
         type,
@@ -131,12 +163,19 @@ router.post("/", async (req, res) => {
         false,
         NOW()
       FROM members m
-      JOIN member_roles mr ON mr.member_id = m.id
-      JOIN roles r ON r.id = mr.role_id
+      JOIN member_roles mr
+        ON mr.member_id = m.id
+      JOIN roles r
+        ON r.id = mr.role_id
       WHERE m.church_id = $1
         AND LOWER(r.name) = 'admin'
-        AND m.status = 'active'`,
-      [churchId, requested_role, request.id]
+        AND m.status = 'active'
+      `,
+      [
+        churchId,
+        requested_role,
+        request.id,
+      ]
     );
 
     await client.query("COMMIT");
@@ -146,50 +185,86 @@ router.post("/", async (req, res) => {
   } catch (err) {
     await client.query("ROLLBACK");
 
-    console.error("Submit role request error:", err);
+    console.error(
+      "Submit role request error:",
+      err
+    );
 
     res.status(500).json({
-      error: err.message || "Failed to submit role request",
+      error:
+        err.message ||
+        "Failed to submit role request",
     });
 
   } finally {
     client.release();
   }
 });
+
 
 /* =====================================================
    GET /role-requests/my-requests
 ===================================================== */
-router.get("/my-requests", async (req, res) => {
-  const client = await pool.connect();
+router.get(
+  "/my-requests",
+  async (req, res) => {
+    const client =
+      await pool.connect();
 
-  try {
-    const profileId = req.user?.id;
+    try {
+      const churchId =
+        req.user?.active_church_id;
 
-    if (!profileId) {
-      return res.status(401).json({ error: "Unauthenticated" });
+      const memberships =
+        req.user?.memberships || [];
+
+      const activeMembership =
+        memberships.find(
+          (m) =>
+            m.church_id === churchId &&
+            m.status === "active"
+        );
+
+      if (!activeMembership) {
+        return res.status(403).json({
+          error:
+            "No active membership",
+        });
+      }
+
+      const memberId =
+        activeMembership.id;
+
+      const { rows } =
+        await client.query(
+          `
+          SELECT *
+          FROM role_requests
+          WHERE member_id = $1
+          ORDER BY role_requested_at DESC
+          `,
+          [memberId]
+        );
+
+      res.json({
+        requests: rows,
+      });
+
+    } catch (err) {
+      console.error(
+        "Fetch role requests error:",
+        err
+      );
+
+      res.status(500).json({
+        error:
+          "Failed to fetch role requests",
+      });
+
+    } finally {
+      client.release();
     }
-
-    const { rows } = await client.query(
-      `SELECT *
-       FROM role_requests
-       WHERE profile_id = $1
-       ORDER BY role_requested_at DESC`,
-      [profileId]
-    );
-
-    res.json({ requests: rows });
-
-  } catch (err) {
-    console.error("Fetch role requests error:", err);
-
-    res.status(500).json({
-      error: "Failed to fetch your role requests",
-    });
-
-  } finally {
-    client.release();
   }
-});
+);
 
 export default router;
