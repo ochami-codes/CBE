@@ -69,7 +69,7 @@ export function buildUserContext(
 
     membership_requests:
       req.membershipRequests,
-    active_church_name,
+    active_church_name: req.profile.active_church_name,
     active_church_id:
       activeChurchId,
    church_id: activeChurchId, // an alias( tempirary)
