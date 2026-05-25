@@ -4,7 +4,7 @@ import express from "express";
 const router = express.Router();
 
 /**
- * Helper: check permission
+ * Permission guard
  */
 function requirePermission(permission) {
   return (req, res, next) => {
@@ -21,118 +21,122 @@ function requirePermission(permission) {
 }
 
 /**
- * POST /admin/users/:id/deactivate
+ * Helper: fetch member scoped to church
+ */
+async function getMember(supabase, memberId, churchId) {
+  const { data, error } = await supabase
+    .from("members")
+    .select("id, status")
+    .eq("id", memberId)
+    .eq("church_id", churchId)
+    .single();
+
+  if (error || !data) return null;
+  return data;
+}
+
+/**
+ * POST /admin/users/:id/suspend
  */
 router.post(
-  "/:id/deactivate",
+  "/:id/suspend",
   requirePermission("manage_users"),
   async (req, res) => {
     const supabase = req.supabase;
     const targetMemberId = req.params.id;
     const adminId = req.user.id;
-    const churchId = req.user.church_id;
+    const churchId = req.user.active_church_id;
+
+    const { reason } = req.body; // optional
 
     if (adminId === targetMemberId) {
       return res.status(400).json({
-        message: "You cannot deactivate yourself.",
+        message: "You cannot suspend yourself.",
       });
     }
 
     try {
-      // 1️⃣ Fetch member
-      const { data: member, error } = await supabase
-        .from("members")
-        .select("id, status")
-        .eq("id", targetMemberId)
-        .eq("church_id", churchId)
-        .single();
+      const member = await getMember(supabase, targetMemberId, churchId);
 
-      if (error || !member) {
+      if (!member) {
         return res.status(404).json({ message: "Member not found" });
       }
 
-      if (member.status !== "active") {
+      if (member.status === "suspended") {
         return res.status(400).json({
-          message: `User already ${member.status}`,
+          message: "User is already suspended",
         });
       }
 
-      // 2️⃣ Update status → inactive
       const { error: updateError } = await supabase
         .from("members")
         .update({
-          status: "inactive",
-          deactivated_at: new Date().toISOString(),
+          status: "suspended",
+          status_reason: reason || "admin suspension",
+          suspended_at: new Date().toISOString(),
         })
         .eq("id", member.id)
         .eq("church_id", churchId);
 
       if (updateError) throw updateError;
 
-      res.json({
+      return res.json({
         success: true,
-        message: "User deactivated successfully",
+        message: "User suspended successfully",
       });
-
     } catch (err) {
-      console.error("Deactivate user error:", err);
-      res.status(500).json({
-        message: "Failed to deactivate user",
+      console.error("Suspend user error:", err);
+      return res.status(500).json({
+        message: "Failed to suspend user",
       });
     }
   }
 );
 
 /**
- * POST /admin/users/:id/activate
+ * POST /admin/users/:id/unsuspend
  */
 router.post(
-  "/:id/activate",
+  "/:id/unsuspend",
   requirePermission("manage_users"),
   async (req, res) => {
     const supabase = req.supabase;
     const targetMemberId = req.params.id;
-    const churchId = req.user.church_id;
+    const churchId = req.user.active_church_id;
 
     try {
-      const { data: member, error } = await supabase
-        .from("members")
-        .select("id, status")
-        .eq("id", targetMemberId)
-        .eq("church_id", churchId)
-        .single();
+      const member = await getMember(supabase, targetMemberId, churchId);
 
-      if (error || !member) {
+      if (!member) {
         return res.status(404).json({ message: "Member not found" });
       }
 
-      if (member.status === "active") {
+      if (member.status !== "suspended") {
         return res.status(400).json({
-          message: "User is already active",
+          message: `User is not suspended (current: ${member.status})`,
         });
       }
 
-      // 2️⃣ Update status → active
       const { error: updateError } = await supabase
         .from("members")
         .update({
           status: "active",
-          deactivated_at: null,
+          status_reason: null,
+          suspended_at: null,
         })
         .eq("id", member.id)
         .eq("church_id", churchId);
 
       if (updateError) throw updateError;
 
-      res.json({
+      return res.json({
         success: true,
         message: "User reactivated successfully",
       });
-
     } catch (err) {
-      console.error("Activate user error:", err);
-      res.status(500).json({
-        message: "Failed to activate user",
+      console.error("Unsuspend user error:", err);
+      return res.status(500).json({
+        message: "Failed to reactivate user",
       });
     }
   }
