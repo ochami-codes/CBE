@@ -1,5 +1,6 @@
 // middleware/buildUserContext.js
-
+import { normalizeRole } from "../config/roles.js";
+import { getUserPermissions } from "../config/roles.js";
 export function buildUserContext(req, res, next) {
   const activeChurchId = req.profile.active_church_id;
 
