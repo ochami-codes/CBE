@@ -22,17 +22,6 @@ export function buildUserContext(req, res, next) {
     ) || null;
 
   /* --------------------------------
-     BLOCK IF MEMBERSHIP IS SUSPENDED
-     (CRITICAL SECURITY LAYER)
-  -------------------------------- */
-  if (activeMembership?.status === "suspended") {
-    return res.status(403).json({
-      message:
-        "Your access to this church has been suspended",
-    });
-  }
-
-  /* --------------------------------
      ONLY ACTIVE MEMBERSHIP CAN DRIVE ROLE ACCESS
   -------------------------------- */
   const isActiveMember =
@@ -88,6 +77,8 @@ export function buildUserContext(req, res, next) {
 
     is_suspended:
       activeMembership?.status === "suspended",
+    suspension_reason:
+    activeMembership?.status_reason || null,
   };
 
   next();
