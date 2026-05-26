@@ -1,53 +1,19 @@
-// middleware/buildUserContext.js
-import { normalizeRole } from "../config/roles.js";
-import { getUserPermissions } from "../config/roles.js";
+import { resolveActiveChurchContext } from "../services/resolveActiveChurchContext.js";
+
 export function buildUserContext(req, res, next) {
-  const activeChurchId = req.profile.active_church_id;
+  const ctx = resolveActiveChurchContext(req);
 
   /* --------------------------------
      GUARD: NO ACTIVE CHURCH
   -------------------------------- */
-  if (!activeChurchId) {
+  if (!ctx) {
     return res.status(400).json({
       message: "No active church selected",
     });
   }
 
   /* --------------------------------
-     FIND MEMBERSHIP IN ACTIVE CHURCH
-  -------------------------------- */
-  const activeMembership =
-    req.memberships.find(
-      (m) => m.church_id === activeChurchId
-    ) || null;
-
-  /* --------------------------------
-     ONLY ACTIVE MEMBERSHIP CAN DRIVE ROLE ACCESS
-  -------------------------------- */
-  const isActiveMember =
-    activeMembership?.status === "active";
-
-  const roleArray =
-    isActiveMember
-      ? activeMembership?.member_roles?.map((r) =>
-          normalizeRole(r.roles?.name)
-        ) || []
-      : ["guest"];
-
-  const permissions = getUserPermissions(roleArray);
-
-  /* --------------------------------
-     ACTIVE MEMBERSHIP REQUEST
-  -------------------------------- */
-  const activeMembershipRequest =
-    req.membershipRequests.find(
-      (r) =>
-        r.church_id === activeChurchId &&
-        r.status === "requested"
-    ) || null;
-
-  /* --------------------------------
-     BUILD USER CONTEXT
+     BUILD USER RESPONSE (NO LOGIC)
   -------------------------------- */
   req.user = {
     id: req.profile.id,
@@ -58,27 +24,24 @@ export function buildUserContext(req, res, next) {
     memberships: req.memberships,
     membership_requests: req.membershipRequests,
 
+    active_church_id: ctx.activeChurchId,
     active_church_name: req.profile.active_church_name,
-    active_church_id: activeChurchId,
 
-    church_id: activeChurchId, // alias (temporary)
+    church_id: ctx.activeChurchId, // alias (optional)
 
-    active_membership: activeMembership,
-    active_membership_request: activeMembershipRequest,
+    active_membership: ctx.activeMembership,
+    active_membership_request: ctx.activeMembershipRequest,
 
-    roles: roleArray,
-    permissions,
+    roles: ctx.roles,
+    permissions: ctx.permissions,
 
-    active_membership_status:
-      activeMembership?.status || "none",
+    active_membership_status: ctx.status,
 
-    is_member: isActiveMember,
-    is_pending: !!activeMembershipRequest,
+    is_member: ctx.isMember,
+    is_pending: ctx.isPending,
+    is_suspended: ctx.isSuspended,
 
-    is_suspended:
-      activeMembership?.status === "suspended",
-    suspension_reason:
-    activeMembership?.status_reason || null,
+    suspension_reason: ctx.suspensionReason,
   };
 
   next();
