@@ -3,12 +3,13 @@ import {
   getMembers,
   getTransfers,
   createTransfer,
-  updateTransferStatus,
   addMember,
   getChildren,
    addChild,
   searchParents,
   getClerkOverview,
+  approveTransferController,
+   rejectTransferController,
 } from "./clerk.controller.js";
 
 const router = express.Router();
@@ -35,6 +36,7 @@ router.get("/search-parents", searchParents);
 -------------------------- */
 router.get("/transfers", getTransfers);
 router.post("/transfers/create", createTransfer);
-router.put("/transfers/:id/status", updateTransferStatus);
 router.get("/overview", getClerkOverview);
+router.post("/transfers/:id/approve", approveTransferController);
+router.post("/transfers/:id/reject", rejectTransferController);
 export default router;

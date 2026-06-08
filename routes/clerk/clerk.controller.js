@@ -3,12 +3,13 @@ import {
   fetchChildren,
   fetchTransfers,
   createTransferRequest,
-  updateTransfer,
   fetchClerkOverview,
   addMemberService,
   addChildService,
   searchParentMembers,
 } from "./clerk.service.js";
+import { approveTransfer } from "./services/approveTransfer.js";
+import { rejectTransfer } from "./services/rejectTransfer.js";
 /* -------------------------
    MEMBERS
 -------------------------- */
@@ -221,33 +222,6 @@ export async function createTransfer(req, res) {
     });
   }
 }
-export async function updateTransferStatus(req, res) {
-  try {
-    console.log("➡️ updateTransferStatus HIT");
-    console.log("PARAMS:", req.params);
-    console.log("BODY:", req.body);
-    console.log("USER:", req.user);
-
-    const transferId = req.params.id;
-    const user = req.user;
-
-    const data = await updateTransfer({
-      transferId,
-      status: req.body.status,
-      reason: req.body.reason,
-      churchId: user.active_church_id,
-      changedBy: user.id,
-    });
-
-    res.json(data);
-  } catch (err) {
-    console.error("❌ updateTransferStatus error:");
-    console.error("MESSAGE:", err.message);
-    console.error("STACK:", err.stack);
-
-    res.status(500).json({ message: "Failed to update transfer" });
-  }
-}
 
 
 export async function getClerkOverview(req, res) {
@@ -267,6 +241,53 @@ export async function getClerkOverview(req, res) {
 
     res.status(500).json({
       message: "Failed to fetch clerk overview",
+    });
+  }
+}
+export async function approveTransferController(
+  req,
+  res
+) {
+  try {
+    const transfer =
+      await approveTransfer({
+        transferId: req.params.id,
+        processedBy:
+          req.user.profileId,
+        notes: req.body.notes,
+      });
+
+    return res.status(200).json({
+      success: true,
+      transfer,
+    });
+  } catch (error) {
+    return res.status(400).json({
+      success: false,
+      message: error.message,
+    });
+  }
+}
+export async function rejectTransferController(
+  req,
+  res
+) {
+  try {
+    const transfer =
+      await rejectTransfer({
+        transferId: req.params.id,
+        processedBy: req.user.id,
+        notes: req.body.notes,
+      });
+
+    return res.status(200).json({
+      success: true,
+      transfer,
+    });
+  } catch (error) {
+    return res.status(400).json({
+      success: false,
+      message: error.message,
     });
   }
 }

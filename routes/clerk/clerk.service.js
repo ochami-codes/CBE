@@ -428,7 +428,7 @@ export async function fetchTransfers(churchId) {
 
       /* member info */
       p.full_name AS member_name,
-
+      p.phone,
       /* source church */
       sc.id AS source_church_id,
       sc.name AS source_church_name,
@@ -471,6 +471,7 @@ export async function createTransferRequest({
   profileId,
   sourceChurchId,
   destinationChurchId,
+  destinationType,
   externalChurchName,
   conferenceId, // only for external transfers
   reason,
@@ -607,10 +608,11 @@ export async function createTransferRequest({
         conference_id,
         status,
         reason,
-        requested_by
+        requested_by,
+        destination_type
       )
       VALUES (
-        $1,$2,'transfer_out',$3,$4,$5,$6,'requested',$7,$8
+        $1,$2,'transfer_out',$3,$4,$5,$6,'requested',$7,$8,$9
       )
       RETURNING *
       `,
@@ -623,162 +625,13 @@ export async function createTransferRequest({
         conferenceId || null,
         reason,
         requestedBy,
+        destinationType
       ]
     );
 
     await client.query("COMMIT");
 
     return result.rows[0];
-  } catch (err) {
-    await client.query("ROLLBACK");
-    throw err;
-  } finally {
-    client.release();
-  }
-}
-export async function updateTransfer({
-  transferId,
-  status,
-  reason,
-  churchId,
-  changedBy,
-}) {
-  /* -------------------------
-     VALIDATE STATUS
-  -------------------------- */
-
-  const allowedStatuses = [
-    "approved",
-    "rejected",
-    "cancelled",
-    "completed",
-  ];
-
-  if (!allowedStatuses.includes(status)) {
-    throw new Error("Invalid transfer status");
-  }
-
-  /* -------------------------
-     FETCH TRANSFER
-  -------------------------- */
-
-  const transferRes = await pool.query(
-    `
-    SELECT *
-    FROM transfers
-    WHERE id = $1
-    `,
-    [transferId]
-  );
-
-  const transfer = transferRes.rows[0];
-
-  if (!transfer) {
-    throw new Error("Transfer not found");
-  }
-
-  /* -------------------------
-     AUTHORIZATION CHECK
-  -------------------------- */
-
-  if (
-    transfer.source_church_id !== churchId &&
-    transfer.destination_church_id !== churchId
-  ) {
-    throw new Error("Not authorized to update this transfer");
-  }
-
-  /* -------------------------
-     START TRANSACTION
-  -------------------------- */
-
-  const client = await pool.connect();
-
-  try {
-    await client.query("BEGIN");
-
-    /* -------------------------
-       UPDATE TRANSFER
-    -------------------------- */
-
-    const updated = await client.query(
-      `
-      UPDATE transfers
-      SET
-        status = $1,
-        reason = COALESCE($2, reason),
-        updated_at = NOW()
-      WHERE id = $3
-      RETURNING *
-      `,
-      [status, reason, transferId]
-    );
-
-    const updatedTransfer = updated.rows[0];
-
-    /* -------------------------
-       LOG ACTION
-    -------------------------- */
-
-    await client.query(
-      `
-      INSERT INTO transfer_logs (
-        transfer_id,
-        action,
-        notes,
-        changed_by
-      )
-      VALUES ($1, $2, $3, $4)
-      `,
-      [
-        transferId,
-        status,
-        reason || null,
-        changedBy,
-      ]
-    );
-
-    /* -------------------------
-       COMPLETION LOGIC (CORE ENGINE)
-    -------------------------- */
-
-    if (status === "completed") {
-      const memberId = transfer.member_id;
-
-      // CASE 1: INTERNAL TRANSFER
-      if (transfer.destination_church_id) {
-        await client.query(
-          `
-          UPDATE members
-          SET church_id = $1,
-              status = 'active',
-              updated_at = NOW()
-          WHERE id = $2
-          `,
-          [
-            transfer.destination_church_id,
-            memberId,
-          ]
-        );
-      }
-
-      // CASE 2: EXTERNAL TRANSFER
-      if (transfer.external_church_name) {
-        await client.query(
-          `
-          UPDATE members
-          SET status = 'transferred',
-              updated_at = NOW()
-          WHERE id = $1
-          `,
-          [memberId]
-        );
-      }
-    }
-
-    await client.query("COMMIT");
-
-    return updatedTransfer;
   } catch (err) {
     await client.query("ROLLBACK");
     throw err;
