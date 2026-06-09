@@ -1,4 +1,9 @@
 import { pool } from "../../db.js";
+import { buildDateRange } from "./services/buildDateRange.js";
+import { getChurchInfo } from "./services/reports/churchInfo.js";
+import { getMembershipSummary } from "./services/reports/membershipSummary.js";
+import { getChildrenSummary } from "./services/reports/childrenSummary.js";
+import { getTransferSummary } from "./services/reports/transferSummary.js";
 export async function fetchMembers(churchId) {
   const result = await pool.query(
     `
@@ -205,6 +210,154 @@ export async function addMemberService({
   }
 }
 
+export async function updateMemberService({
+  churchId,
+  memberId,
+  payload,
+  updatedBy,
+}) {
+  const client = await pool.connect();
+
+  try {
+    await client.query("BEGIN");
+
+    const { profile, member_record, member } =
+      payload;
+
+    /* =========================
+       1. VERIFY MEMBER EXISTS
+    ========================== */
+
+    const existingMemberResult = await client.query(
+      `
+      SELECT *
+      FROM members
+      WHERE id = $1
+      AND church_id = $2
+      LIMIT 1
+      `,
+      [memberId, churchId]
+    );
+
+    if (existingMemberResult.rows.length === 0) {
+      throw new Error("Member not found");
+    }
+
+    const existingMember =
+      existingMemberResult.rows[0];
+
+    /* =========================
+       2. UPDATE PROFILE (if provided)
+    ========================== */
+
+    let updatedProfile = null;
+
+    if (profile && Object.keys(profile).length > 0) {
+      const profileFields = Object.keys(profile)
+        .filter((k) => profile[k] !== undefined)
+        .map((k, i) => `${k} = $${i + 2}`)
+        .join(", ");
+
+      const profileValues = [
+        existingMember.profile_id,
+        ...Object.values(profile),
+      ];
+
+      const profileResult = await client.query(
+        `
+        UPDATE profiles
+        SET ${profileFields}
+        WHERE id = $1
+        RETURNING *
+        `,
+        profileValues
+      );
+
+      updatedProfile = profileResult.rows[0];
+    }
+
+    /* =========================
+       3. UPDATE MEMBER
+    ========================== */
+
+    let updatedMember = existingMember;
+
+    if (member && Object.keys(member).length > 0) {
+      const memberFields = Object.keys(member)
+        .filter((k) => member[k] !== undefined)
+        .map((k, i) => `${k} = $${i + 2}`)
+        .join(", ");
+
+      const memberValues = [
+        memberId,
+        ...Object.values(member),
+      ];
+
+      const memberResult = await client.query(
+        `
+        UPDATE members
+        SET ${memberFields}
+        WHERE id = $1
+        RETURNING *
+        `,
+        memberValues
+      );
+
+      updatedMember = memberResult.rows[0];
+    }
+
+    /* =========================
+       4. UPDATE MEMBER RECORD
+    ========================== */
+
+    let updatedRecord = null;
+
+    if (
+      member_record &&
+      Object.keys(member_record).length > 0
+    ) {
+      const recordFields = Object.keys(member_record)
+        .filter((k) => member_record[k] !== undefined)
+        .map((k, i) => `${k} = $${i + 2}`)
+        .join(", ");
+
+      const recordValues = [
+        memberId,
+        ...Object.values(member_record),
+      ];
+
+      const recordResult = await client.query(
+        `
+        UPDATE member_records
+        SET ${recordFields}
+        WHERE member_id = $1
+        RETURNING *
+        `,
+        recordValues
+      );
+
+      updatedRecord = recordResult.rows[0];
+    }
+
+    /* =========================
+       COMMIT
+    ========================== */
+
+    await client.query("COMMIT");
+
+    return {
+      profile: updatedProfile,
+      member: updatedMember,
+      member_record: updatedRecord,
+      updated_by: updatedBy,
+    };
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
+}
 export async function fetchChildren(churchId) {
   const result = await pool.query(
     `
@@ -357,6 +510,134 @@ export async function addChildService({
         createdBy,
       ]
     );
+
+    await client.query("COMMIT");
+
+    return { child: result.rows[0] };
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+export async function updateChildService({
+  churchId,
+  childId,
+  payload,
+  updatedBy,
+}) {
+  const client = await pool.connect();
+
+  try {
+    await client.query("BEGIN");
+
+    const { parent_member_id, child } = payload;
+
+    if (!child || Object.keys(child).length === 0) {
+      throw new Error("No update data provided");
+    }
+
+    /* =========================
+       1. VERIFY CHILD EXISTS
+    ========================== */
+
+    const existingChild = await client.query(
+      `
+      SELECT *
+      FROM children
+      WHERE id = $1
+        AND church_id = $2
+      LIMIT 1
+      `,
+      [childId, churchId]
+    );
+
+    if (existingChild.rows.length === 0) {
+      throw new Error("Child not found in this church");
+    }
+
+    /* =========================
+       2. VALIDATE PARENT (if changing)
+    ========================== */
+
+    if (parent_member_id) {
+      const parentCheck = await client.query(
+        `
+        SELECT id
+        FROM members
+        WHERE id = $1
+          AND church_id = $2
+        LIMIT 1
+        `,
+        [parent_member_id, churchId]
+      );
+
+      if (parentCheck.rows.length === 0) {
+        throw new Error("Parent member not found in this church");
+      }
+    }
+
+    /* =========================
+       3. BUILD DYNAMIC UPDATE
+    ========================== */
+
+    const allowedFields = [
+      "full_name",
+      "parent_id",
+      "date_of_birth",
+      "gender",
+      "dedication",
+      "dedication_date",
+      "notes",
+    ];
+
+    const updates = [];
+
+    const values = [];
+    let index = 1;
+
+    for (const key of allowedFields) {
+      if (child[key] !== undefined) {
+        updates.push(`${key} = $${index}`);
+        values.push(
+          child[key] === "" ? null : child[key]
+        );
+        index++;
+      }
+    }
+
+    if (parent_member_id) {
+      updates.push(`parent_id = $${index}`);
+      values.push(parent_member_id);
+      index++;
+    }
+
+    if (updates.length === 0) {
+      throw new Error("No valid fields to update");
+    }
+
+    /* =========================
+       4. FINAL UPDATE QUERY
+    ========================== */
+
+    values.push(updatedBy);
+    values.push(childId);
+    values.push(churchId);
+
+    const query = `
+      UPDATE children
+      SET
+        ${updates.join(", ")},
+        updated_by = $${index++},
+        updated_at = NOW()
+      WHERE id = $${index++}
+        AND church_id = $${index++}
+      RETURNING *
+    `;
+
+    const result = await client.query(query, values);
 
     await client.query("COMMIT");
 
@@ -676,4 +957,59 @@ export async function fetchClerkOverview(churchId) {
   );
 
   return result.rows[0];
+}
+export async function getSummaryReportService({
+  churchId,
+  period,
+  year,
+  month,
+}) {
+  const dateRange =
+    buildDateRange({
+      period,
+      year,
+      month,
+    });
+
+  const [
+    church,
+    membership,
+    children,
+    transfers,
+  ] = await Promise.all([
+    getChurchInfo(churchId),
+
+    getMembershipSummary({
+      churchId,
+      dateRange,
+    }),
+
+    getChildrenSummary({
+      churchId,
+      dateRange,
+    }),
+
+    getTransferSummary({
+      churchId,
+      dateRange,
+    }),
+  ]);
+
+  return {
+    church,
+
+    period: {
+      type: period,
+      year,
+      month,
+      start_date: dateRange.start,
+      end_date: dateRange.end,
+    },
+
+    membership,
+    children,
+    transfers,
+
+    generated_at: new Date(),
+  };
 }

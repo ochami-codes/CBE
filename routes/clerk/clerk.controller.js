@@ -5,11 +5,17 @@ import {
   createTransferRequest,
   fetchClerkOverview,
   addMemberService,
+  updateMemberService,
   addChildService,
+  updateChildService,
   searchParentMembers,
+  getSummaryReportService,
 } from "./clerk.service.js";
 import { approveTransfer } from "./services/approveTransfer.js";
 import { rejectTransfer } from "./services/rejectTransfer.js";
+import { generateReportPDF } from "./services/reports/generateReportPDF.js";
+import { buildSummaryReportHTML } from "./services/reports/buildSummaryReportHTML.js";
+
 /* -------------------------
    MEMBERS
 -------------------------- */
@@ -52,6 +58,45 @@ export async function addMember(req, res) {
 
     res.status(500).json({
       message: "Failed to add member",
+    });
+  }
+}
+
+export async function updateMember(req, res) {
+  try {
+    console.log("➡️ updateMember HIT");
+    console.log("PARAMS:", req.params);
+    console.log("BODY:", req.body);
+    console.log("USER:", req.user);
+
+    const { memberId } = req.params;
+    const churchId = req.user.active_church_id;
+
+    const {
+      profile,
+      member,
+      member_record,
+    } = req.body;
+
+    const data = await updateMemberService({
+      memberId,
+      churchId,
+      payload: {
+        profile,
+        member,
+        member_record,
+      },
+      updatedBy: req.user.id,
+    });
+
+    res.status(200).json(data);
+  } catch (err) {
+    console.error("❌ updateMember error:");
+    console.error("MESSAGE:", err.message);
+    console.error("STACK:", err.stack);
+
+    res.status(500).json({
+      message: err.message || "Failed to update member",
     });
   }
 }
@@ -100,7 +145,39 @@ export async function addChild(req, res) {
     });
   }
 }
+export async function updateChild(req, res) {
+  try {
+    console.log("➡️ updateChild HIT");
+    console.log("PARAMS:", req.params);
+    console.log("BODY:", req.body);
+    console.log("USER:", req.user);
 
+    const { childId } = req.params;
+    const churchId = req.user.active_church_id;
+
+    const { parent_member_id, child } = req.body;
+
+    const data = await updateChildService({
+      childId,
+      churchId,
+      payload: {
+        parent_member_id,
+        child,
+      },
+      updatedBy: req.user.id,
+    });
+
+    res.status(200).json(data);
+  } catch (err) {
+    console.error("❌ updateChild error:");
+    console.error("MESSAGE:", err.message);
+    console.error("STACK:", err.stack);
+
+    res.status(500).json({
+      message: err.message || "Failed to update child",
+    });
+  }
+}
 export async function searchParents(req, res) {
   try {
     const churchId = req.user.active_church_id;
@@ -288,6 +365,72 @@ export async function rejectTransferController(
     return res.status(400).json({
       success: false,
       message: error.message,
+    });
+  }
+}
+export async function getSummaryReport(req, res) {
+  try {
+    console.log("➡️ getSummaryReport HIT");
+    console.log("USER:", req.user);
+    console.log("QUERY:", req.query);
+
+    const churchId = req.user.active_church_id;
+
+    const {
+      period = "monthly",
+      year,
+      month,
+      quarter,
+      format = "json", // 👈 NEW
+    } = req.query;
+
+    const data = await getSummaryReportService({
+      churchId,
+      period,
+      year: Number(year),
+      month: month !== undefined ? Number(month) : undefined,
+      quarter: quarter !== undefined ? Number(quarter) : undefined,
+    });
+
+    /* =========================
+       RETURN JSON (default)
+    ========================== */
+    if (format === "json") {
+      return res.json(data);
+    }
+
+    /* =========================
+       RETURN PDF
+    ========================== */
+    if (format === "pdf") {
+      const html = buildSummaryReportHTML(data, {
+        period,
+        year,
+        month,
+        quarter,
+      });
+
+      const pdfBuffer = await generateReportPDF(html);
+
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename=church-report-${period}-${year}.pdf`
+      );
+
+      return res.send(pdfBuffer);
+    }
+
+    return res.status(400).json({
+      message: "Invalid format. Use json or pdf.",
+    });
+  } catch (err) {
+    console.error("❌ getSummaryReport error:");
+    console.error("MESSAGE:", err.message);
+    console.error("STACK:", err.stack);
+
+    res.status(500).json({
+      message: "Failed to generate summary report",
     });
   }
 }
