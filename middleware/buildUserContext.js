@@ -3,45 +3,35 @@ import { resolveActiveChurchContext } from "../services/resolveActiveChurchConte
 export function buildUserContext(req, res, next) {
   const ctx = resolveActiveChurchContext(req);
 
-  /* --------------------------------
-     GUARD: NO ACTIVE CHURCH
-  -------------------------------- */
-  if (!ctx) {
-    return res.status(400).json({
-      message: "No active church selected",
-    });
-  }
+  // IMPORTANT: do NOT block request if ctx is missing
 
-  /* --------------------------------
-     BUILD USER RESPONSE (NO LOGIC)
-  -------------------------------- */
   req.user = {
     id: req.profile.id,
     auth_user_id: req.authUser.id,
     email: req.profile.email,
     full_name: req.profile.full_name,
 
-    memberships: req.memberships,
-    membership_requests: req.membershipRequests,
+    memberships: req.memberships ?? [],
+    membership_requests: req.membershipRequests ?? [],
 
-    active_church_id: ctx.activeChurchId,
-    active_church_name: req.profile.active_church_name,
+    active_church_id: ctx?.activeChurchId ?? null,
+    active_church_name: req.profile.active_church_name ?? null,
 
-    church_id: ctx.activeChurchId, // alias (optional)
+    church_id: ctx?.activeChurchId ?? null,
 
-    active_membership: ctx.activeMembership,
-    active_membership_request: ctx.activeMembershipRequest,
+    active_membership: ctx?.activeMembership ?? null,
+    active_membership_request: ctx?.activeMembershipRequest ?? null,
 
-    roles: ctx.roles,
-    permissions: ctx.permissions,
+    roles: ctx?.roles ?? [],
+    permissions: ctx?.permissions ?? [],
 
-    active_membership_status: ctx.status,
+    active_membership_status: ctx?.status ?? "none",
 
-    is_member: ctx.isMember,
-    is_pending: ctx.isPending,
-    is_suspended: ctx.isSuspended,
+    is_member: ctx?.isMember ?? false,
+    is_pending: ctx?.isPending ?? false,
+    is_suspended: ctx?.isSuspended ?? false,
 
-    suspension_reason: ctx.suspensionReason,
+    suspension_reason: ctx?.suspensionReason ?? null,
   };
 
   next();
