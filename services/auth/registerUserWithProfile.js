@@ -1,5 +1,4 @@
 // services/auth/registerUserWithProfile.js
-
 import {
   supabaseAuth,
   supabaseAdmin,
@@ -24,20 +23,18 @@ export async function registerUserWithProfile({
   date_of_birth,
   gender,
 }) {
-
   const client = await pool.connect();
 
   let createdAuthUserId = null;
 
   try {
-
     /* =====================================================
        VALIDATION
     ===================================================== */
 
-    if (!email || !password || !full_name) {
+    if (!full_name || !email || !password) {
       throw new Error(
-        "Missing required fields"
+        "Full name, email and password are required"
       );
     }
 
@@ -70,10 +67,8 @@ export async function registerUserWithProfile({
         password,
         options: {
           data: {
-            full_name:
-              formattedName,
+            full_name: formattedName,
           },
-
           emailRedirectTo:
             `${process.env.FRONTEND_URL}/auth/callback`,
         },
@@ -97,186 +92,71 @@ export async function registerUserWithProfile({
     createdAuthUserId = userId;
 
     /* =====================================================
-       START TRANSACTION
+       UPDATE PROFILE CREATED BY TRIGGER
     ===================================================== */
 
     await client.query("BEGIN");
 
-    /* =====================================================
-       LOOKUP EXISTING PROFILE
-    ===================================================== */
-
-    let existingProfile = null;
-
-    // Priority 1 → Email
-    const emailLookup =
+    const profileResult =
       await client.query(
         `
-        SELECT *
-        FROM profiles
-        WHERE email = $1
-        LIMIT 1
+        UPDATE profiles
+        SET
+          full_name = COALESCE($1, full_name),
+          phone = COALESCE($2, phone),
+          date_of_birth = COALESCE(
+            $3,
+            date_of_birth
+          ),
+          gender = COALESCE(
+            $4,
+            gender
+          ),
+          updated_at = NOW()
+        WHERE auth_user_id = $5
+        RETURNING *
         `,
-        [email]
+        [
+          formattedName,
+          normalizedPhone,
+          date_of_birth,
+          gender,
+          userId,
+        ]
       );
 
-    existingProfile =
-      emailLookup.rows[0];
+    const profile =
+      profileResult.rows[0];
 
-    // Priority 2 → Phone
-    if (
-      !existingProfile &&
-      normalizedPhone
-    ) {
-
-      const phoneLookup =
-        await client.query(
-          `
-          SELECT *
-          FROM profiles
-          WHERE phone = $1
-          LIMIT 1
-          `,
-          [normalizedPhone]
-        );
-
-      existingProfile =
-        phoneLookup.rows[0];
+    if (!profile) {
+      throw new Error(
+        "Profile was not created by trigger"
+      );
     }
-
-    /* =====================================================
-       PROFILE UPSERT + LINK
-    ===================================================== */
-
-    let profile;
-
-    if (existingProfile) {
-
-      // Prevent linking twice
-      if (
-        existingProfile.auth_user_id
-      ) {
-        throw new Error(
-          "Profile already linked to a system user"
-        );
-      }
-
-      // Existing non-system user
-      const updateRes =
-        await client.query(
-          `
-          UPDATE profiles
-          SET
-            auth_user_id = $1,
-            is_system_user = TRUE,
-            full_name = COALESCE($2, full_name),
-            email = COALESCE($3, email),
-            phone = COALESCE($4, phone),
-            date_of_birth = COALESCE(
-              $5,
-              date_of_birth
-            ),
-            gender = COALESCE(
-              $6,
-              gender
-            ),
-            updated_at = NOW()
-          WHERE id = $7
-          RETURNING *
-          `,
-          [
-            userId,
-            formattedName,
-            email,
-            normalizedPhone,
-            date_of_birth,
-            gender,
-            existingProfile.id,
-          ]
-        );
-
-      profile =
-        updateRes.rows[0];
-
-    } else {
-
-      // Fresh profile
-      const insertRes =
-        await client.query(
-          `
-          INSERT INTO profiles (
-            auth_user_id,
-            full_name,
-            email,
-            phone,
-            date_of_birth,
-            gender,
-            is_system_user
-          )
-          VALUES (
-            $1,$2,$3,$4,$5,$6,TRUE
-          )
-          RETURNING *
-          `,
-          [
-            userId,
-            formattedName,
-            email,
-            normalizedPhone,
-            date_of_birth,
-            gender,
-          ]
-        );
-
-      profile =
-        insertRes.rows[0];
-    }
-
-    /* =====================================================
-       COMMIT
-    ===================================================== */
 
     await client.query("COMMIT");
 
     return {
       message:
         "Registration successful. Please verify your email.",
-
       profile,
     };
-
   } catch (err) {
-
-    /* =====================================================
-       ROLLBACK DB
-    ===================================================== */
-
     await client.query(
       "ROLLBACK"
     );
 
-    /* =====================================================
-       ROLLBACK AUTH
-    ===================================================== */
-
     if (createdAuthUserId) {
-
       try {
-
-        await supabaseAdmin
-          .auth
-          .admin
-          .deleteUser(
-            createdAuthUserId
-          );
+        await supabaseAdmin.auth.admin.deleteUser(
+          createdAuthUserId
+        );
 
         console.log(
           "🧹 Rolled back auth user:",
           createdAuthUserId
         );
-
       } catch (cleanupErr) {
-
         console.error(
           "⚠️ Failed to rollback auth user:",
           cleanupErr
@@ -285,9 +165,7 @@ export async function registerUserWithProfile({
     }
 
     throw err;
-
   } finally {
-
     client.release();
   }
 }
