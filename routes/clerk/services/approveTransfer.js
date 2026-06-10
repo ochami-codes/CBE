@@ -119,8 +119,10 @@ export async function approveTransfer({
   FROM member_roles mr
   JOIN members m
     ON m.id = mr.member_id
+  JOIN roles r
+    ON r.id = mr.role_id
   WHERE m.church_id = $1
-    AND mr.role = 'clerk'
+    AND r.name = 'clerk'
     AND m.status = 'active'
   `,
   [transfer.destination_church_id]
