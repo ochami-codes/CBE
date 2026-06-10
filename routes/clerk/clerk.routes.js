@@ -1,7 +1,9 @@
 import express from "express";
 import {
   getMembers,
-  getTransfers,
+   getSourceTransfers,
+   getDestinationTransfers,
+   getTransferHistory,
   createTransfer,
   addMember,
   updateMember,
@@ -31,13 +33,22 @@ router.post("/add-child", addChild);
 router.get("/search-parents", searchParents);
 router.patch("/children/:id", updateChild);
 /* -------------------------
-   TRANSFERS REGISTER
+   TRANSFERS
 -------------------------- */
-router.get("/transfers", getTransfers);
+
+router.get("/transfers/source", getSourceTransfers);
+
+router.get("/transfers/destination", getDestinationTransfers);
+
+router.get("/transfers/history", getTransferHistory);
+
 router.post("/transfers/create", createTransfer);
-router.get("/overview", getClerkOverview);
+
 router.post("/transfers/:id/approve", approveTransferController);
+
 router.post("/transfers/:id/reject", rejectTransferController);
+
+router.get("/overview", getClerkOverview);
 
 /* -------------------------
    REPORTS

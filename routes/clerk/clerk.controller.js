@@ -11,7 +11,11 @@ import {
   searchParentMembers,
   getSummaryReportService,
 } from "./clerk.service.js";
-import { approveTransfer } from "./services/approveTransfer.js";
+import { getSourceTransfersService } from "./services/getSourceTransfer.js";
+import { getDestinationTransfersService } from "./services/getDestinationTransfer.js";
+import { getTransferHistoryService } from "./services/getTransferHistory.js";
+import { approveSource } from "./services/approveSource.js";
+import { approveDestination } from "./services/approveDestination.js";
 import { rejectTransfer } from "./services/rejectTransfer.js";
 import { generateReportPDF } from "./services/reports/generateReportPDF.js";
 import { buildSummaryReportHTML } from "./services/reports/buildSummaryReportHTML.js";
@@ -203,23 +207,38 @@ export async function searchParents(req, res) {
 /* -------------------------
    TRANSFERS (LIST)
 -------------------------- */
-export async function getTransfers(req, res) {
+export async function getSourceTransfers(req, res) {
   try {
-    console.log("➡️ getTransfers HIT");
-    console.log("USER:", req.user);
+    const churchId = req.user.active_church_id;
 
-    const data = await fetchTransfers(req.user.active_church_id);
+    const transfers = await getSourceTransfersService(churchId);
 
-    res.json(data);
+    res.json(transfers);
   } catch (err) {
-    console.error("❌ getTransfers error:");
-    console.error("MESSAGE:", err.message);
-    console.error("STACK:", err.stack);
-
-    res.status(500).json({ message: "Failed to fetch transfers" });
+    res.status(500).json({ message: err.message });
   }
 }
+export async function getDestinationTransfers(req, res) { 
+  try {
+    const churchId = req.user.active_church_id;
 
+    const transfers = await getDestinationTransfersService(churchId);
+
+    res.json(transfers);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+}
+export async function getTransferHistory(req, res) {
+  try {
+    const churchId = req.user.active_church_id;
+
+    const transfers = await getTransferHistoryService(churchId);
+    res.json(transfers);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+}
 export async function createTransfer(req, res) {
   try {
     console.log("➡️ createTransfer HIT");
@@ -321,25 +340,67 @@ export async function getClerkOverview(req, res) {
     });
   }
 }
-export async function approveTransferController(
-  req,
-  res
-) {
+
+export async function approveTransferController(req, res) {
   try {
-    const transfer =
-      await approveTransfer({
-        transferId: req.params.id,
-        processedBy:
-          req.user.profileId,
-        notes: req.body.notes,
+    const transferId = req.params.id;
+    const processedBy = req.user.profileId;
+    const notes = req.body.notes;
+
+    /* =========================
+       LOAD TRANSFER FIRST
+    ========================= */
+    const result = await pool.query(
+      `
+      SELECT id, status
+      FROM transfers
+      WHERE id = $1
+      `,
+      [transferId]
+    );
+
+    const transfer = result.rows[0];
+
+    if (!transfer) {
+      return res.status(404).json({
+        success: false,
+        message: "Transfer not found",
       });
+    }
+
+    let updatedTransfer;
+
+    /* =========================
+       ROUTE BY STATUS
+    ========================= */
+    if (transfer.status === "requested") {
+      updatedTransfer = await approveSource({
+        transferId,
+        processedBy,
+        notes,
+      });
+    } 
+    else if (transfer.status === "pending_destination") {
+      updatedTransfer = await approveDestination({
+        transferId,
+        processedBy,
+        notes,
+      });
+    } 
+    else {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot approve a ${transfer.status} transfer`,
+      });
+    }
 
     return res.status(200).json({
       success: true,
-      transfer,
+      transfer: updatedTransfer,
     });
+
   } catch (error) {
-    return res.status(400).json({
+    return res.status(500).json({
       success: false,
       message: error.message,
     });

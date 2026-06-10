@@ -11,50 +11,35 @@ export async function rejectTransfer({
     await client.query("BEGIN");
 
     /* =========================
-       LOCK & LOAD TRANSFER
+       LOCK TRANSFER
     ========================= */
-    const transferResult =
-      await client.query(
-        `
-        SELECT
-          t.*,
-          m.profile_id
-        FROM transfers t
-        JOIN members m
-          ON m.id = t.member_id
-        WHERE t.id = $1
-        FOR UPDATE
-        `,
-        [transferId]
-      );
+    const result = await client.query(
+      `
+      SELECT t.*, m.profile_id
+      FROM transfers t
+      JOIN members m ON m.id = t.member_id
+      WHERE t.id = $1
+      FOR UPDATE
+      `,
+      [transferId]
+    );
 
-    const transfer =
-      transferResult.rows[0];
+    const transfer = result.rows[0];
 
     if (!transfer) {
-      throw new Error(
-        "Transfer not found"
-      );
+      throw new Error("Transfer not found");
     }
 
     /* =========================
        DETERMINE STAGE
     ========================= */
     let action;
-    let notificationMessage;
     let updateQuery;
+    let notificationMessage;
+    let notifyChurchId;
 
-    if (
-      transfer.status ===
-      "requested"
-    ) {
-      action =
-        "source_rejected";
-
-      notificationMessage =
-        notes
-          ? `Your transfer request was rejected. Reason: ${notes}`
-          : "Your transfer request was rejected.";
+    if (transfer.status === "requested") {
+      action = "source_rejected";
 
       updateQuery = `
         UPDATE transfers
@@ -66,17 +51,15 @@ export async function rejectTransfer({
         WHERE id = $2
         RETURNING *
       `;
-    } else if (
-      transfer.status ===
-      "pending_destination"
-    ) {
-      action =
-        "destination_rejected";
 
-      notificationMessage =
-        notes
-          ? `Your transfer request was rejected by the destination church. Reason: ${notes}`
-          : "Your transfer request was rejected by the destination church.";
+      notificationMessage = notes
+        ? `Your transfer request was rejected by the source church. Reason: ${notes}`
+        : "Your transfer request was rejected by the source church.";
+
+      notifyChurchId = transfer.source_church_id;
+    } 
+    else if (transfer.status === "pending_destination") {
+      action = "destination_rejected";
 
       updateQuery = `
         UPDATE transfers
@@ -88,7 +71,14 @@ export async function rejectTransfer({
         WHERE id = $2
         RETURNING *
       `;
-    } else {
+
+      notificationMessage = notes
+        ? `Your transfer was rejected by the destination church. Reason: ${notes}`
+        : "Your transfer was rejected by the destination church.";
+
+      notifyChurchId = transfer.destination_church_id;
+    } 
+    else {
       throw new Error(
         `Cannot reject a ${transfer.status} transfer`
       );
@@ -97,20 +87,13 @@ export async function rejectTransfer({
     /* =========================
        UPDATE TRANSFER
     ========================= */
-    const updatedTransferResult =
-      await client.query(
-        updateQuery,
-        [
-          processedBy,
-          transferId,
-        ]
-      );
-
-    const updatedTransfer =
-      updatedTransferResult.rows[0];
+    const updated = await client.query(
+      updateQuery,
+      [processedBy, transferId]
+    );
 
     /* =========================
-       AUDIT LOG
+       LOG
     ========================= */
     await client.query(
       `
@@ -120,23 +103,13 @@ export async function rejectTransfer({
         notes,
         changed_by
       )
-      VALUES (
-        $1,
-        $2,
-        $3,
-        $4
-      )
+      VALUES ($1, $2, $3, $4)
       `,
-      [
-        transferId,
-        action,
-        notes,
-        processedBy,
-      ]
+      [transferId, action, notes, processedBy]
     );
 
     /* =========================
-       MEMBER NOTIFICATION
+       NOTIFICATION
     ========================= */
     await client.query(
       `
@@ -147,17 +120,11 @@ export async function rejectTransfer({
         title,
         message
       )
-      VALUES (
-        $1,
-        $2,
-        $3,
-        $4,
-        $5
-      )
+      VALUES ($1, $2, $3, $4, $5)
       `,
       [
         transfer.profile_id,
-        transfer.source_church_id,
+        notifyChurchId,
         "transfer_rejected",
         "Transfer Rejected",
         notificationMessage,
@@ -166,12 +133,10 @@ export async function rejectTransfer({
 
     await client.query("COMMIT");
 
-    return updatedTransfer;
-  } catch (error) {
-    await client.query(
-      "ROLLBACK"
-    );
-    throw error;
+    return updated.rows[0];
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
   } finally {
     client.release();
   }
