@@ -19,6 +19,7 @@ import { approveDestination } from "./services/approveDestination.js";
 import { rejectTransfer } from "./services/rejectTransfer.js";
 import { generateReportPDF } from "./services/reports/generateReportPDF.js";
 import { buildSummaryReportHTML } from "./services/reports/buildSummaryReportHTML.js";
+import { pool } from "../../db.js";
 
 /* -------------------------
    MEMBERS
