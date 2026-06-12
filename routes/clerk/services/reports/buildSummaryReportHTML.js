@@ -1,6 +1,9 @@
 import { buildPeriodLabel } from "./buildPeriodLabel.js";
+import { getLogoBase64 } from "../../../../utils/getLogoBased64.js";
 export function buildSummaryReportHTML(data, meta) {
   const periodLabel = buildPeriodLabel(meta);
+  const logoBase64 = getLogoBase64();
+
 
   return `
     <html>
@@ -79,7 +82,10 @@ export function buildSummaryReportHTML(data, meta) {
 
         <!-- HEADER -->
         <div class="header">
-          <img class="logo" src="https://your-adventist-logo-url.png" />
+          <img
+  class="logo"
+  src="data:image/png;base64,${logoBase64}"
+/>
           <div class="title">Church Summary Report</div>
           <div class="subtitle">${periodLabel}</div>
         </div>

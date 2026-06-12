@@ -473,7 +473,12 @@ export async function getSummaryReport(req, res) {
       });
 
       const pdfBuffer = await generateReportPDF(html);
-
+      console.log("Is Buffer:", Buffer.isBuffer(pdfBuffer));
+console.log("PDF Size:", pdfBuffer?.length);
+console.log(
+  "PDF Header:",
+  pdfBuffer?.slice(0, 10).toString()
+);
       res.setHeader("Content-Type", "application/pdf");
       res.setHeader(
         "Content-Disposition",
