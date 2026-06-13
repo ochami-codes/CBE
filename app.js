@@ -36,7 +36,28 @@ import { supabaseAdmin } from "./supabaseClient.js";
 const app = express();
 
 /* ----------------- Global middleware ------------------ */
-app.use(cors());
+const allowedOrigins = [
+  "http://localhost:5173",
+  "https://cms-ian-ochami-s-projects.vercel.app",
+];
+
+const corsOptions = {
+  origin: (origin, callback) => {
+    if (!origin) return callback(null, true);
+
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+
+    return callback(null, false);
+  },
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+};
+
+app.use(cors(corsOptions));
+
 app.use(express.json());
 
 /* ------------------ Attach Supabase ------------------ */

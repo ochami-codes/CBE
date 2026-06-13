@@ -4,8 +4,17 @@ import { supabaseAuth, supabaseAdmin } from "../../supabaseClient.js";
 const router = express.Router();
 
 router.post("/", async (req, res) => {
+  console.log("[LOGIN REQUEST] Incoming:", {
+    method: req.method,
+    url: req.originalUrl,
+    ip: req.ip,
+    body: {
+      email: req.body?.email,
+      password: req.body?.password ? "***" : undefined,
+    },
+    time: new Date().toISOString(),
+  });
   const { email, password } = req.body;
-
   if (!email || !password) {
     return res.status(400).json({
       message: "Email and password are required",
