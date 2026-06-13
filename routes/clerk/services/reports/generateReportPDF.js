@@ -4,12 +4,13 @@ export async function generateReportPDF(html) {
   try {
     console.log("Starting Puppeteer launch");
     const browser = await puppeteer.launch({
-      headless: true,
+      headless: "new",
       args: [
       "--no-sandbox",
       "--disable-setuid-sandbox",
       "--disable-dev-shm-usage",
     ],
+      executablePath: puppeteer.executablePath(),
   });
 console.log("Puppeteer launched successfully");
   const page = await browser.newPage();
