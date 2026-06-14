@@ -1,35 +1,44 @@
 import puppeteer from "puppeteer";
+import chromium from "@sparticuz/chromium";
 
 export async function generateReportPDF(html) {
   try {
     console.log("Starting Puppeteer launch");
+
+    const isProd = process.env.NODE_ENV === "production";
+
     const browser = await puppeteer.launch({
-      headless: true,
-      args: [
-      "--no-sandbox",
-      "--disable-setuid-sandbox",
-      "--disable-dev-shm-usage",
-    ],
-  });
-console.log("Puppeteer launched successfully");
-  const page = await browser.newPage();
+      headless: isProd ? chromium.headless : "new",
 
-  await page.setContent(html, {
-    waitUntil: "networkidle0",
-  });
+      args: isProd
+        ? chromium.args
+        : ["--no-sandbox", "--disable-setuid-sandbox"],
 
-  // FIXED (no waitForTimeout dependency)
-  await new Promise((resolve) => setTimeout(resolve, 500));
+      executablePath: isProd
+        ? await chromium.executablePath()
+        : undefined,
+    });
 
-  const pdf = await page.pdf({
-    format: "A4",
-    printBackground: true,
-  });
+    console.log("Puppeteer launched successfully");
 
-  await browser.close();
+    const page = await browser.newPage();
 
-  return pdf;
-} catch (error){
-  console.error("Puppeteer error:", error);
-  throw error;
-}}
+    await page.setContent(html, {
+      waitUntil: "networkidle0",
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 500));
+
+    const pdf = await page.pdf({
+      format: "A4",
+      printBackground: true,
+    });
+
+    await browser.close();
+
+    return pdf;
+  } catch (error) {
+    console.error("Puppeteer error:", error);
+    throw error;
+  }
+}
