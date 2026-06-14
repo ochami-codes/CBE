@@ -8,20 +8,16 @@ export async function generateReportPDF(html) {
     const isProd = process.env.NODE_ENV === "production";
 
     const browser = await puppeteer.launch({
-      headless: isProd ? chromium.headless : "new",
-
-      args: isProd
-        ? chromium.args
-        : ["--no-sandbox", "--disable-setuid-sandbox"],
-
-      executablePath: isProd
-        ? await chromium.executablePath()
-        : undefined,
-    });
-
-    console.log("Puppeteer launched successfully");
-
-    const page = await browser.newPage();
+      headless: "new",
+      args: [
+      "--no-sandbox",
+      "--disable-setuid-sandbox",
+      "--disable-dev-shm-usage",
+    ],
+      executablePath: puppeteer.executablePath(),
+  });
+console.log("Puppeteer launched successfully");
+  const page = await browser.newPage();
 
     await page.setContent(html, {
       waitUntil: "networkidle0",
