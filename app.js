@@ -15,8 +15,7 @@ import profileRoutes from "./routes/profile/index.js";
 import churchRoutes from "./routes/churches.js";
 import childrenRoutes from "./routes/children-members.js";
 import clerkRoutes from "./routes/clerk/clerk.routes.js";
-import treasuryRoutes from "./routes/treasury/index.js";
-import treasuryTransactionRoutes from "./routes/treasury/transactions.js";
+import treasuryRoutes from "./routes/treasury/treasury-routes.js";
 import verseRoutes from "./routes/daily-verse.js";
 import announcementRoutes from "./routes/announcements.js";
 import myBirthdayRoutes from "./routes/dashboard/myBirthday.js";
@@ -92,7 +91,6 @@ app.use("/attendance", userContext, attendanceRoutes);
 app.use("/children", userContext, childrenRoutes);
 app.use("/clerk", userContext, clerkRoutes);
 app.use("/treasury", userContext, treasuryRoutes);
-app.use("/treasury/transactions", userContext, treasuryTransactionRoutes);
 app.use("/role-requests", userContext, myRequest);
 
 /* ------------------ Admin routes ------------------ */
