@@ -1,77 +1,11 @@
-async function createFundGroup(client, {
-  churchId,
-  name,
-  description,
-  groupType,
-}) {
-  const result = await client.query(
-    `
-    INSERT INTO treasury_fund_groups (
-      church_id,
-      name,
-      description,
-      group_type,
-      created_at
-    )
-    VALUES ($1, $2, $3, $4, NOW())
-    RETURNING id, name
-    `,
-    [
-      churchId,
-      name,
-      description,
-      groupType,
-    ]
-  );
-
-  return result.rows[0];
-}
-
-
-async function createFunds(client, {
-  churchId,
-  groupId,
-  funds,
-}) {
-  for (const fund of funds) {
-    await client.query(
-      `
-      INSERT INTO treasury_funds (
-        church_id,
-        group_id,
-        fund_category,
-        fund_code,
-        name,
-        is_system,
-        is_active,
-        created_at
-      )
-      VALUES (
-        $1,$2,$3,$4,$5,true,true,NOW()
-      )
-      `,
-      [
-        churchId,
-        groupId,
-        fund.category ?? null, // only local funds have category
-        fund.code,
-        fund.name,
-      ]
-    );
-  }
-}
-
-
+import { FundsService } from "../../treasury/services/FundService.js";
+import { FundGroupsService } from "../../treasury/services/FundGroupsService.js";
 export async function setupChurchTreasury(
   client,
   churchId
 ) {
 
-  /* =========================
-     FUND GROUPS
-  ========================= */
-
-  const trustGroup = await createFundGroup(client, {
+  const trustGroup = await FundGroupsService.createFundGroup(client, {
     churchId,
     name: "Trust Funds",
     description:
@@ -80,7 +14,7 @@ export async function setupChurchTreasury(
   });
 
 
-  const localGroup = await createFundGroup(client, {
+  const localGroup = await FundGroupsService.createFundGroup(client, {
     churchId,
     name: "Local Church Funds",
     description:
@@ -89,12 +23,7 @@ export async function setupChurchTreasury(
   });
 
 
-
-  /* =========================
-     TRUST FUNDS
-  ========================= */
-
-  await createFunds(client, {
+  const trustFunds = await FundsService.createFunds(client, {
     churchId,
     groupId: trustGroup.id,
 
@@ -128,11 +57,7 @@ export async function setupChurchTreasury(
 
 
 
-  /* =========================
-     LOCAL FUNDS
-  ========================= */
-
-  await createFunds(client, {
+  const localFunds = await FundsService.createFunds(client, {
     churchId,
     groupId: localGroup.id,
 
@@ -148,6 +73,11 @@ export async function setupChurchTreasury(
         category: "general",
       },
       {
+        code: "THANKSGIVING_SHARE",
+        name: "Thanksgiving Offering Share",
+        category: "general",
+      },
+      {
         code: "LOCAL_EVANGELISM",
         name: "Local Evangelism Fund",
         category: "restricted",
@@ -159,5 +89,48 @@ export async function setupChurchTreasury(
       },
     ],
   });
+
+
+
+  const findFund = (list, code) =>
+    list.find(f => f.fund_code === code);
+
+
+
+  const allocations = [
+    {
+      source: findFund(trustFunds, "COMBINED"),
+      target: findFund(localFunds, "COMBINED_SHARE"),
+      percentage: 50,
+    },
+    {
+      source: findFund(trustFunds, "THANKSGIVING"),
+      target: findFund(localFunds, "THANKSGIVING_SHARE"),
+      percentage: 50,
+    },
+  ];
+
+
+
+  for (const item of allocations) {
+
+    await client.query(
+      `
+      INSERT INTO treasury_fund_allocations (
+        source_fund_id,
+        target_fund_id,
+        percentage,
+        created_at
+      )
+      VALUES ($1,$2,$3,NOW())
+      `,
+      [
+        item.source.id,
+        item.target.id,
+        item.percentage,
+      ]
+    );
+
+  }
 
 }

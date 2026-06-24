@@ -58,12 +58,14 @@ export async function getFundGroups(req, res) {
    ========================================================================== */
 export async function getFunds(req, res) {
   try {
+
     const churchId =
       req.user.active_church_id;
 
 
     const {
       group_id,
+      group_type,
       department_id,
       active,
     } = req.query;
@@ -77,6 +79,9 @@ export async function getFunds(req, res) {
 
         groupId:
           group_id || null,
+
+        groupType:
+          group_type || null,
 
         departmentId:
           department_id || null,
@@ -98,6 +103,12 @@ export async function getFunds(req, res) {
 
 
   } catch (error) {
+
+    console.error(
+      "Get funds error:",
+      error
+    );
+
 
     return res.status(500).json({
 
@@ -186,11 +197,12 @@ export async function getTransactions(req, res) {
 
 export async function createTransaction(req, res) {
   try {
+    const ProfileId = req.user.id;
     const churchId = req.user.active_church_id;
 
     const data = await TransactionsService.create({
       churchId,
-      recordedBy: req.user.profileId,
+      recordedBy: ProfileId,
       ...req.body,
     });
 
