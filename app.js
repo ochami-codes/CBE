@@ -28,7 +28,6 @@ import notificationRoutes from "./routes/notifications.js";
 import attendanceRoutes from "./routes/attendance.js";
 import roleRoutes from "./routes/roles.js"
 import myRequest from "./routes/role-requests.js";
-import { authMiddleware } from "./middleware/authMiddleware.js";
 import conferenceRoutes from "./routes/conferences.js";
 import { supabaseAdmin } from "./supabaseClient.js";
 

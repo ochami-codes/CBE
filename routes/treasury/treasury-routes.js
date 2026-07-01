@@ -2,10 +2,13 @@ import express from "express";
 import {
   getTreasuryOverview,
   getFundGroups,
+  createFund,
   getFunds,
-  getFundSummary,
+  getFundsSummary,
   getTransactions,
   createTransaction,
+  createRemit,
+  cancelRemit,
   getMemberGivingSummary,
   getMemberGivingHistory,
 } from "./TreasuryController.js";
@@ -13,8 +16,11 @@ const router = express.Router();
 
 router.get("/overview",getTreasuryOverview);
 router.get("/fund-groups", getFundGroups);
+router.post("/funds", createFund);
 router.get("/funds",getFunds);
-router.get("/funds/:id/summary",getFundSummary);
+router.post("/funds/remit", createRemit);
+router.patch("/funds/remit/:id/cancel", cancelRemit);
+router.get("/funds/summary", getFundsSummary);
 router.get("/transactions",getTransactions);
 router.post("/transactions",createTransaction);
 router.get("/members/giving-summary", getMemberGivingSummary);
