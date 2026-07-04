@@ -1,12 +1,9 @@
 import { pool } from "../../../db.js";
 
 export const TreasuryService = {
-
   async getOverview({
     churchId,
   }) {
-
-
     const overviewResult =
       await pool.query(
         `
@@ -20,7 +17,7 @@ export const TreasuryService = {
             SUM(
               CASE
                 WHEN g.group_type = 'local'
-                AND t.type = 'IN'
+                 AND t.type = 'IN'
                 THEN t.amount
                 ELSE 0
               END
@@ -31,13 +28,15 @@ export const TreasuryService = {
 
 
           /*
-            Total trust funds received
+            Current trust funds
+            (not yet remitted)
           */
           COALESCE(
             SUM(
               CASE
                 WHEN g.group_type = 'trust'
-                AND t.type = 'IN'
+                 AND t.type = 'IN'
+                 AND t.remittance_id IS NULL
                 THEN t.amount
                 ELSE 0
               END
@@ -54,16 +53,15 @@ export const TreasuryService = {
             SUM(
               CASE
                 WHEN g.group_type = 'local'
-                AND t.type = 'IN'
-                AND DATE_TRUNC(
-                  'month',
-                  t.transaction_date
-                )
-                =
-                DATE_TRUNC(
-                  'month',
-                  CURRENT_DATE
-                )
+                 AND t.type = 'IN'
+                 AND DATE_TRUNC(
+                       'month',
+                       t.transaction_date
+                     ) =
+                     DATE_TRUNC(
+                       'month',
+                       CURRENT_DATE
+                     )
                 THEN t.amount
                 ELSE 0
               END
@@ -80,16 +78,15 @@ export const TreasuryService = {
             SUM(
               CASE
                 WHEN g.group_type = 'trust'
-                AND t.type = 'IN'
-                AND DATE_TRUNC(
-                  'month',
-                  t.transaction_date
-                )
-                =
-                DATE_TRUNC(
-                  'month',
-                  CURRENT_DATE
-                )
+                 AND t.type = 'IN'
+                 AND DATE_TRUNC(
+                       'month',
+                       t.transaction_date
+                     ) =
+                     DATE_TRUNC(
+                       'month',
+                       CURRENT_DATE
+                     )
                 THEN t.amount
                 ELSE 0
               END
@@ -106,15 +103,14 @@ export const TreasuryService = {
             SUM(
               CASE
                 WHEN t.type = 'OUT'
-                AND DATE_TRUNC(
-                  'month',
-                  t.transaction_date
-                )
-                =
-                DATE_TRUNC(
-                  'month',
-                  CURRENT_DATE
-                )
+                 AND DATE_TRUNC(
+                       'month',
+                       t.transaction_date
+                     ) =
+                     DATE_TRUNC(
+                       'month',
+                       CURRENT_DATE
+                     )
                 THEN t.amount
                 ELSE 0
               END
@@ -130,143 +126,56 @@ export const TreasuryService = {
           COALESCE(
             SUM(
               CASE
-
                 WHEN g.group_type = 'local'
-                AND t.type = 'IN'
+                 AND t.type = 'IN'
                 THEN t.amount
 
-
                 WHEN g.group_type = 'local'
-                AND t.type = 'OUT'
+                 AND t.type = 'OUT'
                 THEN -t.amount
 
-
                 ELSE 0
-
               END
             ),
             0
-          ) AS available_local_balance
-
-
-        FROM treasury_transactions t
-
-
-        JOIN treasury_funds f
-          ON f.id = t.fund_id
-
-
-        JOIN treasury_fund_groups g
-          ON g.id = f.group_id
-
-
-        WHERE t.church_id = $1
-        `,
-        [
-          churchId
-        ]
-      );
+          ) AS available_local_balance,
 
 
 
-
-
-    /*
-      Trust money already remitted
-    */
-    const remittedResult =
-      await pool.query(
-        `
-        SELECT
-
+          /*
+            Trust funds awaiting remittance
+          */
           COALESCE(
             SUM(
-              ri.amount
+              CASE
+                WHEN g.group_type = 'trust'
+                 AND t.type = 'IN'
+                 AND t.remittance_id IS NULL
+                THEN t.amount
+                ELSE 0
+              END
             ),
             0
-          ) AS remitted
-
-
-        FROM treasury_remittance_items ri
-
-
-        JOIN treasury_remittances r
-          ON r.id = ri.remittance_id
-
-
-        WHERE r.church_id = $1
-
-        `,
-        [
-          churchId
-        ]
-      );
-
-
-
-
-
-    /*
-      Current month trust received
-      minus remitted
-    */
-    const trustBalanceResult =
-      await pool.query(
-        `
-        SELECT
-
-          COALESCE(
-            SUM(t.amount),
-            0
-          ) AS received
-
+          ) AS unremitted_trust_funds
 
         FROM treasury_transactions t
-
 
         JOIN treasury_funds f
           ON f.id = t.fund_id
 
-
         JOIN treasury_fund_groups g
           ON g.id = f.group_id
 
-
         WHERE t.church_id = $1
-
-        AND g.group_type = 'trust'
-
-        AND t.type = 'IN'
-
-
-        AND DATE_TRUNC(
-          'month',
-          t.transaction_date
-        )
-        =
-        DATE_TRUNC(
-          'month',
-          CURRENT_DATE
-        )
-
         `,
-        [
-          churchId
-        ]
+        [churchId]
       );
-
-
-
-
-
 
     const todayResult =
       await pool.query(
         `
         SELECT
-
           COUNT(*) AS today_count,
-
 
           COALESCE(
             SUM(
@@ -279,7 +188,6 @@ export const TreasuryService = {
             0
           ) AS today_recorded,
 
-
           COALESCE(
             SUM(
               CASE
@@ -291,116 +199,70 @@ export const TreasuryService = {
             0
           ) AS today_expenses
 
-
         FROM treasury_transactions
 
-
         WHERE church_id = $1
-
-        AND transaction_date =
-            CURRENT_DATE
-
+          AND transaction_date = CURRENT_DATE
         `,
-        [
-          churchId
-        ]
+        [churchId]
       );
-
-
-
-
 
     const overview =
       overviewResult.rows[0];
 
-
     const today =
       todayResult.rows[0];
 
-
-    const remitted =
-      Number(
-        remittedResult.rows[0].remitted
-      );
-
-
-    const trustReceived =
-      Number(
-        trustBalanceResult.rows[0].received
-      );
-
-
-
     return {
-
-
       total_local_funds:
         Number(
           overview.total_local_funds
         ),
-
 
       total_trust_funds:
         Number(
           overview.total_trust_funds
         ),
 
-
-
       monthly_local_receipts:
         Number(
           overview.monthly_local_receipts
         ),
-
-
 
       monthly_trust_receipts:
         Number(
           overview.monthly_trust_receipts
         ),
 
-
-
       monthly_expenses:
         Number(
           overview.monthly_expenses
         ),
-
-
 
       available_local_balance:
         Number(
           overview.available_local_balance
         ),
 
-
-
       unremitted_trust_funds:
-        trustReceived - remitted,
-
-
+        Number(
+          overview.unremitted_trust_funds
+        ),
 
       today_count:
         Number(
           today.today_count
         ),
 
-
-
       today_recorded:
         Number(
           today.today_recorded
         ),
 
-
-
       today_expenses:
         Number(
           today.today_expenses
         ),
-
     };
-
   },
-
 };

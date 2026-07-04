@@ -249,16 +249,30 @@ async getSummary({ churchId }) {
         f.department_id,
 
         COALESCE(
-          SUM(
-            CASE
-              WHEN t.type = 'IN'
-                THEN t.amount
-              ELSE
-                -t.amount
-            END
-          ),
-          0
-        ) AS balance
+  SUM(
+    CASE
+
+      -- Trust income counts only until remitted
+      WHEN g.group_type = 'trust'
+       AND t.type = 'IN'
+       AND t.remittance_id IS NULL
+      THEN t.amount
+
+      -- Local & department income always counts
+      WHEN g.group_type <> 'trust'
+       AND t.type = 'IN'
+      THEN t.amount
+
+      -- Expenses
+      WHEN t.type = 'OUT'
+      THEN -t.amount
+
+      ELSE 0
+
+    END
+  ),
+  0
+) AS balance
 
       FROM treasury_funds f
 
@@ -286,10 +300,10 @@ async getSummary({ churchId }) {
     pool.query(
       `
       SELECT
-        DATE_TRUNC(
-          'month',
-          t.transaction_date
-        )::date AS month,
+        TO_CHAR(
+  t.transaction_date,
+  'YYYY-MM'
+) AS month,
 
         t.id,
         t.transaction_date,
@@ -317,7 +331,7 @@ async getSummary({ churchId }) {
         t.transaction_date,
         f.name
       `,
-      [churchId]
+           [churchId]
     ),
   ]);
 
@@ -358,7 +372,7 @@ async getSummary({ churchId }) {
   const unremittedMonths = Object.values(
     unremittedResult.rows.reduce(
       (groups, row) => {
-        const key = row.month.toISOString();
+        const key = row.month;
 
         if (!groups[key]) {
           groups[key] = {

@@ -26,7 +26,7 @@ export function buildUserContext(req, res, next) {
     permissions: ctx?.permissions ?? [],
 
     active_membership_status: ctx?.status ?? "none",
-
+    active_member_id: ctx?.activeMembership?.id ?? null,
     is_member: ctx?.isMember ?? false,
     is_pending: ctx?.isPending ?? false,
     is_suspended: ctx?.isSuspended ?? false,

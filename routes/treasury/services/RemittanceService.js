@@ -3,6 +3,60 @@ import { getEligibleTransactions } from "./remittance/getEligibleTransactions.js
 import { generateNumber } from "./remittance/generateNumber.js";
 
 export const RemittanceService = {
+  async getRemittances({
+  churchId,
+}) {
+  const result = await pool.query(
+    `
+    SELECT
+      r.id,
+      r.remittance_number,
+      r.remittance_date,
+      r.status,
+      r.total_amount,
+      r.notes,
+
+      COALESCE(
+        json_agg(
+          json_build_object(
+            'id', ri.id,
+            'fundId', f.id,
+            'fundName', f.name,
+            'amount', ri.amount
+          )
+          ORDER BY f.name
+        ) FILTER (
+          WHERE ri.id IS NOT NULL
+        ),
+        '[]'
+      ) AS items
+
+    FROM treasury_remittances r
+
+    LEFT JOIN treasury_remittance_items ri
+      ON ri.remittance_id = r.id
+
+    LEFT JOIN treasury_funds f
+      ON f.id = ri.fund_id
+
+    WHERE r.church_id = $1
+
+    GROUP BY
+      r.id,
+      r.remittance_number,
+      r.remittance_date,
+      r.status,
+      r.total_amount,
+      r.notes
+
+    ORDER BY
+      r.remittance_date DESC
+    `,
+    [churchId]
+  );
+
+  return result.rows;
+},
 async create({
   churchId,
   months,
@@ -21,7 +75,7 @@ async create({
         churchId,
         months,
       });
-
+console.log("Eligible transactions:", transactions);
     if (transactions.length === 0) {
       throw new Error(
         "No unremitted trust transactions found."

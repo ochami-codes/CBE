@@ -3,7 +3,7 @@ import { FundGroupsService } from "./services/FundGroupsService.js";
 import { FundsService } from "./services/FundService.js";
 import { RemittanceService } from "./services/RemittanceService.js";
 import { TransactionsService } from "./services/TransactionService.js";
-import { MembersService } from "./services/MemberService.js";
+import {getMemberLedger} from "./services/members/getMemberLedger.js";
 import { handleRemittanceAction } from "./services/remittance/handleRemitAction.js";
 
 /* ==========================================================================
@@ -52,6 +52,28 @@ export async function getFundGroups(req, res) {
       success: false,
       message: error.message,
     });
+  }
+}
+export async function getRemittances(req, res) {
+  try {
+    const data =
+      await RemittanceService.getRemittances({
+        churchId:
+          req.user.active_church_id,
+      });
+
+    return res.status(200).json({
+      success: true,
+      data,
+    });
+
+  } catch (error) {
+
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+
   }
 }
 export async function createRemit(req, res) {
@@ -293,11 +315,14 @@ export async function createTransaction(req, res) {
    MEMBER GIVING
    ========================================================================== */
 
-export async function getMemberGivingSummary(req, res) {
+export async function getMemberGiving(req, res) {
   try {
     const churchId = req.user.active_church_id;
-
-    const data = await MembersService.getGivingSummary(churchId);
+    const { memberId } = req.params;
+    const data = await getMemberLedger({
+      churchId,
+      memberId
+    });
 
     return res.status(200).json({
       success: true,
@@ -310,23 +335,24 @@ export async function getMemberGivingSummary(req, res) {
     });
   }
 }
-
-export async function getMemberGivingHistory(req, res) {
+export async function getMyGiving(req, res) {
   try {
     const churchId = req.user.active_church_id;
-    const { memberId } = req.params;
 
-    const data = await MembersService.getMemberHistory({
+    const memberId = req.user.active_member_id;
+    console.log("user", req.user);
+    const data = await getMemberLedger({
       churchId,
       memberId,
     });
 
-    return res.status(200).json({
+    res.json({
       success: true,
       data,
     });
+
   } catch (error) {
-    return res.status(500).json({
+    res.status(500).json({
       success: false,
       message: error.message,
     });
