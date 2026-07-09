@@ -9,7 +9,6 @@ const router = express.Router();
 ========================================================= */
 router.post("/", async (req, res) => {
   const client = await pool.connect();
-console.log("BODY:", req.body);
   const profile_id = req.user.id;
 const church_id = req.user.active_church_id;
   const { content, recipient_profile_id, thread_id } = req.body;

@@ -3,6 +3,11 @@ import { buildDateRange } from "./services/buildDateRange.js";
 import { getChurchInfo } from "./services/reports/churchInfo.js";
 import { getMembershipSummary } from "./services/reports/membershipSummary.js";
 import { getChildrenSummary } from "./services/reports/childrenSummary.js";
+import {
+  isValidKenyanPhone,
+  normalizeKenyanPhone,
+} from "../../utils/phone.js";
+
 import { getTransferSummary } from "./services/reports/transferSummary.js";
 export async function fetchMembers(churchId) {
   const result = await pool.query(
@@ -48,44 +53,61 @@ export async function fetchMembers(churchId) {
   return result.rows;
 }
 
+
 export async function addMemberService({
   churchId,
-  payload
+  payload,
 }) {
   const client = await pool.connect();
 
   try {
     await client.query("BEGIN");
 
-    const { profile, member_record } =
-      payload;
+    const {
+      full_name,
+      phone,
+      date_of_birth,
+      gender,
+      baptized,
+      baptismal_date,
+      marital_status,
+      membership_type,
+      emergency_contact_name,
+      emergency_contact_relationship,
+      emergency_contact_phone,
+    } = payload;
 
-    /* =========================
-       1. CHECK EXISTING PROFILE
-    ========================== */
+    const normalizedPhone = phone
+      ? isValidKenyanPhone(phone)
+        ? normalizeKenyanPhone(phone)
+        : (() => {
+            throw new Error(
+              "Please enter a valid Kenyan phone number."
+            );
+          })()
+      : null;
 
-    const existingProfileResult =
-      await client.query(
+    let profileId;
+
+    if (normalizedPhone) {
+      const existingProfile = await client.query(
         `
-        SELECT *
+        SELECT id
         FROM profiles
         WHERE phone = $1
         LIMIT 1
         `,
-        [profile.phone]
+        [normalizedPhone]
       );
 
-    let profileId;
-    let resolvedProfile;
+      if (existingProfile.rowCount) {
+        profileId =
+          existingProfile.rows[0].id;
+      }
+    }
 
-    if (existingProfileResult.rows.length > 0) {
-      // REUSE EXISTING PROFILE
-      resolvedProfile =
-        existingProfileResult.rows[0];
-      profileId = resolvedProfile.id;
-    } else {
-      // CREATE NEW PROFILE
-      const newProfileResult =
+    if (!profileId) {
+      const profileResult =
         await client.query(
           `
           INSERT INTO profiles (
@@ -96,46 +118,37 @@ export async function addMemberService({
             is_system_user
           )
           VALUES ($1, $2, $3, $4, false)
-          RETURNING *
+          RETURNING id
           `,
           [
-            profile.full_name,
-            profile.phone,
-            profile.date_of_birth,
-            profile.gender,
+            full_name,
+            normalizedPhone,
+            date_of_birth || null,
+            gender,
           ]
         );
 
-      resolvedProfile =
-        newProfileResult.rows[0];
-      profileId = resolvedProfile.id;
+      profileId =
+        profileResult.rows[0].id;
     }
 
-    /* =========================
-       2. CHECK IF MEMBER EXISTS IN CHURCH
-    ========================== */
-
-    const existingMember =
+    const memberExists =
       await client.query(
         `
-        SELECT *
+        SELECT 1
         FROM members
         WHERE church_id = $1
-        AND profile_id = $2
+          AND profile_id = $2
         LIMIT 1
         `,
         [churchId, profileId]
       );
 
-    if (existingMember.rows.length > 0) {
+    if (memberExists.rowCount) {
       throw new Error(
-        "This person is already a member of this church"
+        "This person is already a member of this church."
       );
     }
-
-    /* =========================
-       3. CREATE MEMBER
-    ========================== */
 
     const memberResult =
       await client.query(
@@ -148,63 +161,50 @@ export async function addMemberService({
         VALUES ($1, $2, 'active')
         RETURNING *
         `,
-        [
-          churchId,
-          profileId,
-        ]
+        [churchId, profileId]
       );
 
-    const newMember = memberResult.rows[0];
+    const member =
+      memberResult.rows[0];
 
-    /* =========================
-       4. CREATE MEMBER RECORD
-    ========================== */
-
-    const recordResult =
-      await client.query(
-        `
-        INSERT INTO member_records (
-          member_id,
-          baptized,
-          baptismal_date,
-          marital_status,
-          membership_type,
-          emergency_contact_name,
-          emergency_contact_relationship,
-          emergency_contact_phone
-        )
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-        RETURNING *
-        `,
-        [
-          newMember.id,
-          member_record.baptized ?? "unknown",
-          member_record.baptismal_date || null,
-          member_record.marital_status || null,
-          member_record.membership_type,
-          member_record.emergency_contact_name || null,
-          member_record.emergency_contact_relationship || null,
-          member_record.emergency_contact_phone || null,
-        ]
-      );
-
-    const newRecord = recordResult.rows[0];
-
-    /* =========================
-       COMMIT
-    ========================== */
+    await client.query(
+      `
+      INSERT INTO member_records (
+        member_id,
+        baptized,
+        baptismal_date,
+        marital_status,
+        membership_type,
+        emergency_contact_name,
+        emergency_contact_relationship,
+        emergency_contact_phone
+      )
+      VALUES (
+        $1,$2,$3,$4,$5,$6,$7,$8
+      )
+      `,
+      [
+        member.id,
+        baptized ?? "unknown",
+        baptismal_date || null,
+        marital_status || null,
+        membership_type,
+        emergency_contact_name || null,
+        emergency_contact_relationship || null,
+        emergency_contact_phone
+          ? normalizeKenyanPhone(
+              emergency_contact_phone
+            )
+          : null,
+      ]
+    );
 
     await client.query("COMMIT");
 
-    return {
-      profile: resolvedProfile,
-      member: newMember,
-      member_record: newRecord,
-      reused_profile: existingProfileResult.rows.length > 0,
-    };
-  } catch (err) {
+    return member;
+  } catch (error) {
     await client.query("ROLLBACK");
-    throw err;
+    throw error;
   } finally {
     client.release();
   }

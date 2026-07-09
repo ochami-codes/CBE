@@ -32,10 +32,6 @@ router.post("/", async (req, res) => {
     // 3️⃣ Prepare payload for Supabase Admin API
     const payload = { password: newPassword };
 
-    // 🔍 Debug logs
-    console.log("Updating password for Auth UID:", authUserId);
-    console.log("Payload being sent to Supabase:", payload);
-
     // 4️⃣ Update password in Supabase
     const { error } = await supabaseAdmin.auth.admin.updateUserById(
       authUserId,

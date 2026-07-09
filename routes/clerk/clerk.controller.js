@@ -26,9 +26,6 @@ import { pool } from "../../db.js";
 -------------------------- */
 export async function getMembers(req, res) {
   try {
-    console.log("➡️ getMembers HIT");
-    console.log("USER:", req.user);
-    console.log("CHURCH:", req.user?.active_church_id);
 
     const data = await fetchMembers(req.user.active_church_id);
 
@@ -43,9 +40,6 @@ export async function getMembers(req, res) {
 }
 export async function addMember(req, res) {
   try {
-    console.log("➡️ addMember HIT");
-    console.log("BODY:", req.body);
-    console.log("USER:", req.user);
 
     const churchId = req.user.active_church_id;
 
@@ -69,10 +63,6 @@ export async function addMember(req, res) {
 
 export async function updateMember(req, res) {
   try {
-    console.log("➡️ updateMember HIT");
-    console.log("PARAMS:", req.params);
-    console.log("BODY:", req.body);
-    console.log("USER:", req.user);
 
     const { memberId } = req.params;
     const churchId = req.user.active_church_id;
@@ -110,8 +100,6 @@ export async function updateMember(req, res) {
 -------------------------- */
 export async function getChildren(req, res) {
   try {
-    console.log("➡️ getChildren HIT");
-    console.log("USER:", req.user);
 
     const data = await fetchChildren(req.user.active_church_id);
 
@@ -127,10 +115,6 @@ export async function getChildren(req, res) {
 
 export async function addChild(req, res) {
   try {
-    console.log("➡️ addChild HIT");
-    console.log("BODY:", req.body);
-    console.log("USER:", req.user);
-
     const churchId = req.user.active_church_id;
 
     const data = await addChildService({
@@ -152,11 +136,6 @@ export async function addChild(req, res) {
 }
 export async function updateChild(req, res) {
   try {
-    console.log("➡️ updateChild HIT");
-    console.log("PARAMS:", req.params);
-    console.log("BODY:", req.body);
-    console.log("USER:", req.user);
-
     const { childId } = req.params;
     const churchId = req.user.active_church_id;
 
@@ -242,10 +221,6 @@ export async function getTransferHistory(req, res) {
 }
 export async function createTransfer(req, res) {
   try {
-    console.log("➡️ createTransfer HIT");
-    console.log("BODY:", req.body);
-    console.log("USER:", req.user);
-
     const user = req.user;
 
     const {
@@ -323,9 +298,6 @@ export async function createTransfer(req, res) {
 
 export async function getClerkOverview(req, res) {
   try {
-    console.log("➡️ getClerkOverview HIT");
-    console.log("USER:", req.user);
-
     const churchId = req.user.active_church_id;
 
     const data = await fetchClerkOverview(churchId);
@@ -432,10 +404,6 @@ export async function rejectTransferController(
 }
 export async function getSummaryReport(req, res) {
   try {
-    console.log("➡️ getSummaryReport HIT");
-    console.log("USER:", req.user);
-    console.log("QUERY:", req.query);
-
     const churchId = req.user.active_church_id;
 
     const {
@@ -473,12 +441,6 @@ export async function getSummaryReport(req, res) {
       });
 
       const pdfBuffer = await generateReportPDF(html);
-      console.log("Is Buffer:", Buffer.isBuffer(pdfBuffer));
-console.log("PDF Size:", pdfBuffer?.length);
-console.log(
-  "PDF Header:",
-  pdfBuffer?.slice(0, 10).toString()
-);
       res.setHeader("Content-Type", "application/pdf");
       res.setHeader(
         "Content-Disposition",

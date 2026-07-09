@@ -340,7 +340,6 @@ export async function getMyGiving(req, res) {
     const churchId = req.user.active_church_id;
 
     const memberId = req.user.active_member_id;
-    console.log("user", req.user);
     const data = await getMemberLedger({
       churchId,
       memberId,
