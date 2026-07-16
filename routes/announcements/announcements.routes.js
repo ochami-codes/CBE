@@ -4,10 +4,26 @@ import { AnnouncementController } from "./announcements.controller.js";
 
 const router = express.Router();
 
-router.get("/", AnnouncementController.getAnnouncements);
+// Church-wide announcements (visible to everyone)
+router.get(
+  "/church",
+  AnnouncementController.getChurchAnnouncements
+);
 
-router.post("/",AnnouncementController.createAnnouncement);
+// Department announcements
+router.get(
+  "/department/:departmentId",
+  AnnouncementController.getDepartmentAnnouncements
+);
 
-router.delete("/:id", AnnouncementController.deleteAnnouncement);
+router.post(
+  "/",
+  AnnouncementController.createAnnouncement
+);
+
+router.delete(
+  "/:id",
+  AnnouncementController.deleteAnnouncement
+);
 
 export default router;

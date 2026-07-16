@@ -12,7 +12,7 @@ import {
   cancelRemit,
   getMemberGiving,
   getMyGiving,
-} from "./TreasuryController.js";
+} from "./treasury.controller.js";
 const router = express.Router();
 
 router.get("/overview",getTreasuryOverview);

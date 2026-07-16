@@ -1,5 +1,7 @@
 import { pool } from "../../../db.js";
-
+import { getFunds } from "./fundsSummary/getFunds.js";
+import { getUnremittedFunds } from "./fundsSummary/getUnremittedFunds.js";
+import { buildFundsSummary } from "./fundsSummary/buildFundsSummary.js";
 export const FundsService = {
   async create({
   churchId,
@@ -135,8 +137,8 @@ async createFunds(client, {
   async getFunds({
     churchId,
     groupId = null,
-    groupType = null,
-    departmentId = null,
+    groupType,
+    departmentId,
     active = true,
   }) {
 
@@ -162,8 +164,6 @@ async createFunds(client, {
 
     }
 
-
-
     if (groupType) {
 
       params.push(groupType);
@@ -186,8 +186,6 @@ async createFunds(client, {
 
     }
 
-
-
     if (active !== undefined) {
 
       params.push(active);
@@ -197,10 +195,6 @@ async createFunds(client, {
       );
 
     }
-
-
-
-
     const result =
       await pool.query(
         `
@@ -232,196 +226,42 @@ async createFunds(client, {
 
   },
 
+async getSummary({
+  churchId,
+  departmentId,
+}) {
+  if (departmentId) {
+    const departmentFunds =
+      await getFunds({
+        churchId,
+        departmentId,
+      });
 
+    return {
+      summary: {
+        departmentBalance:
+          departmentFunds.reduce(
+            (total, fund) =>
+              total + fund.balance,
+            0
+          ),
+      },
 
+      departmentFunds,
+    };
+  }
 
-async getSummary({ churchId }) {
   const [
-    fundsResult,
-    unremittedResult,
+    funds,
+    unremittedRows,
   ] = await Promise.all([
-    pool.query(
-      `
-      SELECT
-        f.id,
-        f.name,
-        g.group_type,
-        f.department_id,
-
-        COALESCE(
-  SUM(
-    CASE
-
-      -- Trust income counts only until remitted
-      WHEN g.group_type = 'trust'
-       AND t.type = 'IN'
-       AND t.remittance_id IS NULL
-      THEN t.amount
-
-      -- Local & department income always counts
-      WHEN g.group_type <> 'trust'
-       AND t.type = 'IN'
-      THEN t.amount
-
-      -- Expenses
-      WHEN t.type = 'OUT'
-      THEN -t.amount
-
-      ELSE 0
-
-    END
-  ),
-  0
-) AS balance
-
-      FROM treasury_funds f
-
-      LEFT JOIN treasury_fund_groups g
-        ON g.id = f.group_id
-
-      LEFT JOIN treasury_transactions t
-        ON t.fund_id = f.id
-
-      WHERE f.church_id = $1
-
-      GROUP BY
-        f.id,
-        f.name,
-        g.group_type,
-        f.department_id
-
-      ORDER BY
-        g.group_type,
-        f.name
-      `,
-      [churchId]
-    ),
-
-    pool.query(
-      `
-      SELECT
-        TO_CHAR(
-  t.transaction_date,
-  'YYYY-MM'
-) AS month,
-
-        t.id,
-        t.transaction_date,
-        t.amount,
-
-        f.id AS fund_id,
-        f.name AS fund_name
-
-      FROM treasury_transactions t
-
-      JOIN treasury_funds f
-        ON f.id = t.fund_id
-
-      JOIN treasury_fund_groups g
-        ON g.id = f.group_id
-
-      WHERE
-        f.church_id = $1
-        AND g.group_type = 'trust'
-        AND t.type = 'IN'
-        AND t.remittance_id IS NULL
-
-      ORDER BY
-        month,
-        t.transaction_date,
-        f.name
-      `,
-           [churchId]
-    ),
+    getFunds({ churchId }),
+    getUnremittedFunds(churchId),
   ]);
 
-  const funds = fundsResult.rows.map(row => ({
-    id: row.id,
-    name: row.name,
-    group_type: row.group_type,
-    department_id: row.department_id,
-    balance: Number(row.balance),
-  }));
-
-  const trustFunds = funds.filter(
-    fund =>
-      fund.group_type === "trust" &&
-      fund.department_id === null
-  );
-
-  const localFunds = funds.filter(
-    fund =>
-      fund.group_type === "local" &&
-      fund.department_id === null
-  );
-
-  const departmentFunds = funds.filter(
-    fund => fund.department_id !== null
-  );
-
-  const sum = list =>
-    list.reduce(
-      (total, fund) => total + fund.balance,
-      0
-    );
-
-  const trustBalance = sum(trustFunds);
-  const localBalance = sum(localFunds);
-  const departmentBalance = sum(departmentFunds);
-
-  const unremittedMonths = Object.values(
-    unremittedResult.rows.reduce(
-      (groups, row) => {
-        const key = row.month;
-
-        if (!groups[key]) {
-          groups[key] = {
-            month: row.month,
-            total: 0,
-            transactions: [],
-          };
-        }
-
-        groups[key].total += Number(row.amount);
-
-        groups[key].transactions.push({
-          id: row.id,
-          fundId: row.fund_id,
-          fundName: row.fund_name,
-          transactionDate:
-            row.transaction_date,
-          amount: Number(row.amount),
-        });
-
-        return groups;
-      },
-      {}
-    )
-  );
-
-  return {
-    summary: {
-      overallBalance:
-        trustBalance +
-        localBalance +
-        departmentBalance,
-
-      trustBalance,
-      localBalance,
-      departmentBalance,
-
-      pendingRemittance:
-        unremittedMonths.reduce(
-          (sum, month) => sum + month.total,
-          0
-        ),
-    },
-
-    trustFunds,
-    localFunds,
-    departmentFunds,
-
-    unremittedMonths,
-  }
+  return buildFundsSummary({
+    funds,
+    unremittedRows,
+  });
 }
 }

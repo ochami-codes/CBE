@@ -25,10 +25,11 @@ import departmentRoutes from "./routes/departments.js";
 import messageRoutes from "./routes/messages/messages.js";
 import memberRoutes from "./routes/members/member.routes.js";
 import notificationRoutes from "./routes/notifications.js";
-import attendanceRoutes from "./routes/attendance.js";
+import attendanceRoutes from "./routes/attendance/attendance.routes.js";
 import roleRoutes from "./routes/roles.js"
 import myRequest from "./routes/role-requests.js";
 import conferenceRoutes from "./routes/conferences.js";
+import sabbathSchoolRoutes from "./routes/sabbathSchool/sabbathSchool.routes.js";
 import { supabaseAdmin } from "./supabaseClient.js";
 
 const app = express();
@@ -91,6 +92,7 @@ app.use("/children", userContext, childrenRoutes);
 app.use("/clerk", userContext, clerkRoutes);
 app.use("/treasury", userContext, treasuryRoutes);
 app.use("/role-requests", userContext, myRequest);
+app.use("/sabbath-school", userContext, sabbathSchoolRoutes);
 
 /* ------------------ Admin routes ------------------ */
 app.use("/admin", userContext, adminRoutes);

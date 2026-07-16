@@ -237,12 +237,18 @@ export async function getFunds(req, res) {
 
 
 
-export async function getFundsSummary(req, res) {
+export async function getFundsSummary(
+  req,
+  res
+) {
   try {
     const data =
       await FundsService.getSummary({
         churchId:
           req.user.active_church_id,
+
+        departmentId:
+          req.query.departmentId,
       });
 
     return res.status(200).json({
@@ -251,15 +257,15 @@ export async function getFundsSummary(req, res) {
     });
 
   } catch (error) {
+    console.error(error);
 
     return res.status(500).json({
       success: false,
-      message: error.message,
+      message:
+        error.message,
     });
-
   }
 }
-
 /* ==========================================================================
    TRANSACTIONS
    ========================================================================== */
