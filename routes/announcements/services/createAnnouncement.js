@@ -2,11 +2,11 @@ import { pool } from "../../../db.js";
 
 export async function createAnnouncement({
   churchId,
-  userId,
+  departmentId = null,
+  createdBy,
   payload
 }) {
-  const { title, message, department_id } = payload;
-  const departmentId = department_id || null;
+  const { title, message } = payload;
   const { rows } = await pool.query(
     `
     INSERT INTO announcements (
@@ -37,7 +37,7 @@ export async function createAnnouncement({
       departmentId,
       title.trim(),
       message.trim(),
-      userId,
+      createdBy,
     ]
   );
 

@@ -3,32 +3,21 @@ import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import { userContext } from "./middleware/userContext.js";
-import authRoutes from "./routes/auth/index.js";
-import activeChurch from "./routes/church/activeChurch.js";
-import createChurch from "./routes/church/createChurch.js";
-import adminRoutes from "./routes/admin/index.js";
-import membershipRoutes from "./routes/membership/member.js";
-import adminMembershipRoutes from "./routes/membership/admin.js";
-import donationRoutes from "./routes/donations.js";
-import pastorRoutes from "./routes/pastor/pastorRoutes.js";
-import profileRoutes from "./routes/profile/index.js";
-import churchRoutes from "./routes/churches.js";
-import childrenRoutes from "./routes/children-members.js";
+import authRoutes from "./routes/auth/auth.routes.js";
+import adminRoutes from "./routes/admin/admin.routes.js";
+import membershipRoutes from "./routes/membership/membership.routes.js";
+import pastorRoutes from "./routes/pastor/pastor.routes.js";
+import profileRoutes from "./routes/profile/profile.routes.js";
 import clerkRoutes from "./routes/clerk/clerk.routes.js";
 import treasuryRoutes from "./routes/treasury/treasury-routes.js";
-import verseRoutes from "./routes/daily-verse.js";
+import dashboardRoutes from "./routes/dashboard/dashboard.routes.js";
 import announcementRoutes from "./routes/announcements/announcements.routes.js";
-import myBirthdayRoutes from "./routes/dashboard/myBirthday.js";
-import upcomingBirthdays from "./routes/dashboard/upcomingBirthdays.js";
-import todaysBirthdayRoutes from "./routes/dashboard/todaysBirthdays.js";
-import departmentRoutes from "./routes/departments.js";
-import messageRoutes from "./routes/messages/messages.js";
+import messageRoutes from "./routes/messages/messages.routes.js";
 import memberRoutes from "./routes/members/member.routes.js";
-import notificationRoutes from "./routes/notifications.js";
+import notificationRoutes from "./routes/notifications/notifications.routes.js";
 import attendanceRoutes from "./routes/attendance/attendance.routes.js";
-import roleRoutes from "./routes/roles.js"
-import myRequest from "./routes/role-requests.js";
-import conferenceRoutes from "./routes/conferences.js";
+import roleRoutes from "./routes/roleRequests/role.requests.routes.js";
+import reusableRoutes from "./routes/reusables/reusables.routes.js";
 import sabbathSchoolRoutes from "./routes/sabbathSchool/sabbathSchool.routes.js";
 import { supabaseAdmin } from "./supabaseClient.js";
 
@@ -65,38 +54,22 @@ app.use((req, res, next) => {
   next();
 });
 
-/* ------------------ Public routes ------------------ */
 app.use("/auth", authRoutes);
-app.use("/churches", churchRoutes);
-app.use("/roles",roleRoutes); 
-app.use("/conferences", conferenceRoutes);
-/* ------------------ Dashboard routes (auth optional inside route) ------------------ */
-app.use("/dashboard/daily-verse", verseRoutes);
-app.use("/dashboard/announcements", userContext, announcementRoutes);
-app.use("/dashboard/upcoming-birthdays",userContext, upcomingBirthdays);
-app.use("/dashboard/my-birthday", userContext, myBirthdayRoutes);
-app.use("/dashboard/todays-birthdays", userContext, todaysBirthdayRoutes);
+app.use("/reusables", userContext, reusableRoutes);
+app.use("/dashboard", userContext, dashboardRoutes);
+app.use("/announcements", userContext, announcementRoutes);
 app.use("/notifications", userContext, notificationRoutes);
 app.use("/messages", userContext, messageRoutes);
-/* ------------------ Authenticated routes ------------------ */
 app.use("/profile", userContext, profileRoutes);
 app.use("/membership-requests", userContext, membershipRoutes);
-app.use("/donations", userContext, donationRoutes);
-app.use("/create-church", userContext, createChurch);
-app.use("/active-church", userContext, activeChurch);
 app.use("/pastor", userContext, pastorRoutes);
 app.use("/members", userContext, memberRoutes);
-app.use("/departments", userContext, departmentRoutes);
 app.use("/attendance", userContext, attendanceRoutes);
-app.use("/children", userContext, childrenRoutes);
 app.use("/clerk", userContext, clerkRoutes);
 app.use("/treasury", userContext, treasuryRoutes);
-app.use("/role-requests", userContext, myRequest);
+app.use("/role-requests", userContext, roleRoutes);
 app.use("/sabbath-school", userContext, sabbathSchoolRoutes);
-
-/* ------------------ Admin routes ------------------ */
 app.use("/admin", userContext, adminRoutes);
-app.use("/admin/membership-requests", userContext, adminMembershipRoutes);
 
 /* ------------------ Health check ------------------ */
 app.get("/", (req, res) => {

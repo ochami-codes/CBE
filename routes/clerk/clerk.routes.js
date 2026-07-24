@@ -16,42 +16,42 @@ import {
    rejectTransferController,
    getSummaryReport,
 } from "./clerk.controller.js";
-
+import { authorize } from "../../middleware/authorize.js";
 const router = express.Router();
 
 /* -------------------------
    MEMBERS (system + non-system)
 -------------------------- */
 router.get("/members", getMembers);
-router.post("/add-member", addMember);
-router.patch("/members/:id", updateMember);
+router.post("/add-member",authorize("manage_records"), addMember);
+router.patch("/members/:id", authorize("manage_records"), updateMember);
 /* -------------------------
    CHILDREN REGISTER
 -------------------------- */
 router.get("/children", getChildren);
-router.post("/add-child", addChild);
+router.post("/add-child", authorize("manage_records"), addChild);
 router.get("/search-parents", searchParents);
-router.patch("/children/:id", updateChild);
+router.patch("/children/:id", authorize("manage_records"), updateChild);
 /* -------------------------
    TRANSFERS
 -------------------------- */
 
-router.get("/transfers/source", getSourceTransfers);
+router.get("/transfers/source", authorize("manage_records"), getSourceTransfers);
 
-router.get("/transfers/destination", getDestinationTransfers);
+router.get("/transfers/destination", authorize("manage_records"), getDestinationTransfers);
 
-router.get("/transfers/history", getTransferHistory);
+router.get("/transfers/history", authorize("manage_records"), getTransferHistory);
 
 router.post("/transfers/create", createTransfer);
 
-router.post("/transfers/:id/approve", approveTransferController);
+router.post("/transfers/:id/approve", authorize("manage_records"), approveTransferController);
 
-router.post("/transfers/:id/reject", rejectTransferController);
+router.post("/transfers/:id/reject", authorize("manage_records"), rejectTransferController);
 
-router.get("/overview", getClerkOverview);
+router.get("/overview", authorize("manage_records"), getClerkOverview);
 
 /* -------------------------
    REPORTS
 -------------------------- */
-router.get("/reports/summary", getSummaryReport);
+router.get("/reports/summary",authorize("manage_records"), getSummaryReport);
 export default router;

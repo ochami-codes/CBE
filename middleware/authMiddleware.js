@@ -1,4 +1,3 @@
-// middleware/authMiddleware.js
 import { supabaseAuth } from "../supabaseClient.js";
 
 export async function authMiddleware(req, res, next) {
@@ -6,7 +5,9 @@ export async function authMiddleware(req, res, next) {
     const authHeader = req.headers.authorization;
 
     if (!authHeader?.startsWith("Bearer ")) {
-      return res.status(401).json({ message: "Unauthorized" });
+      return res.status(401).json({
+        message: "Please log in to continue.",
+      });
     }
 
     const token = authHeader.split(" ")[1];
@@ -15,12 +16,20 @@ export async function authMiddleware(req, res, next) {
       await supabaseAuth.auth.getUser(token);
 
     if (error || !data.user) {
-      return res.status(401).json({ message: "Invalid token" });
+      return res.status(401).json({
+        message: "Your session has expired. Please log in again.",
+      });
     }
 
     req.authUser = data.user;
+
     next();
-  } catch (err) {
-    return res.status(500).json({ message: "Auth error" });
+  } catch (error) {
+    console.error("Authentication error:", error);
+
+    return res.status(500).json({
+      message:
+        "Something went wrong while verifying your session.",
+    });
   }
 }
