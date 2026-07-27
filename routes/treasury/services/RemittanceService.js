@@ -1,6 +1,8 @@
 import { pool } from "../../../db.js";
 import { getEligibleTransactions } from "./remittance/getEligibleTransactions.js";
 import { generateNumber } from "./remittance/generateNumber.js";
+import { createAppError } from "../../../errors/AppError.js";
+import { ERROR_CODES } from "../../../errors/errorCodes.js";
 
 export const RemittanceService = {
   async getRemittances({
@@ -75,10 +77,11 @@ async create({
         churchId,
         months,
       });
-console.log("Eligible transactions:", transactions);
     if (transactions.length === 0) {
-      throw new Error(
-        "No unremitted trust transactions found."
+      throw createAppError(
+        "No unremitted trust transactions found.",
+        404,
+        ERROR_CODES.NOT_FOUND
       );
     }
 
@@ -237,8 +240,10 @@ async cancel({
       if (
         remittanceResult.rowCount === 0
       ) {
-        throw new Error(
-          "Remittance not found."
+        throw createAppError(
+          "Remittance not found.",
+          404,
+          ERROR_CODES.NOT_FOUND
         );
       }
 
@@ -249,8 +254,10 @@ async cancel({
         remittance.status ===
         "cancelled"
       ) {
-        throw new Error(
-          "Remittance has already been cancelled."
+        throw createAppError(
+          "Remittance has already been cancelled.",
+          409,
+          ERROR_CODES.CONFLICT
         );
       }
 

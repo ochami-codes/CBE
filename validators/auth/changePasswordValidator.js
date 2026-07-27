@@ -1,3 +1,6 @@
+import { createAppError } from "../../errors/AppError.js";
+import { ERROR_CODES } from "../../errors/errorCodes.js";
+
 export function validateChangePasswordInput(input = {}) {
   let { newPassword } = input;
 
@@ -15,14 +18,18 @@ export function validateChangePasswordInput(input = {}) {
   newPassword = String(newPassword ?? "").trim();
 
   if (!newPassword) {
-    throw new Error(
-      "New password is required."
+    throw createAppError(
+      "New password is required.",
+      400,
+      ERROR_CODES.INVALID_INPUT
     );
   }
 
   if (newPassword.length < 6) {
-    throw new Error(
-      "New password must be at least 6 characters long."
+    throw createAppError(
+      "New password must be at least 6 characters long.",
+      400,
+      ERROR_CODES.INVALID_INPUT
     );
   }
 

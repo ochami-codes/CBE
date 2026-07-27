@@ -1,17 +1,19 @@
 // services/church.service.js
 
 import { pool } from "../../../db.js";
+import { createAppError } from "../../../errors/AppError.js";
+import { ERROR_CODES } from "../../../errors/errorCodes.js";
 
 export async function switchActiveChurch({
   profileId,
   churchId,
 }) {
   if (!profileId) {
-    throw new Error("User is required.");
+    throw createAppError("User is required.", 400, ERROR_CODES.INVALID_CREDENTIALS);
   }
 
   if (!churchId) {
-    throw new Error("Church is required.");
+    throw createAppError("Church is required.", 400, ERROR_CODES.INVALID_CREDENTIALS);
   }
 
   // Ensure the church exists
@@ -25,7 +27,7 @@ export async function switchActiveChurch({
   );
 
   if (!churchRows.length) {
-    throw new Error("Church not found.");
+    throw createAppError("Church not found.", 404, ERROR_CODES.CHURCH_NOT_FOUND);
   }
 
   await pool.query(

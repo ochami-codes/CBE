@@ -4,6 +4,8 @@ import {
 } from "../../utils/phone.js";
 
 import { toNameCase } from "../../utils/formatters.js";
+import { createAppError } from "../../errors/AppError.js";
+import { ERROR_CODES } from "../../errors/errorCodes.js";
 
 export function validateRegisterInput({
   full_name,
@@ -14,20 +16,22 @@ export function validateRegisterInput({
   gender,
 }) {
   if (!full_name?.trim()) {
-    throw new Error("Full name is required.");
+    throw createAppError("Full name is required.", 400, ERROR_CODES.INVALID_INPUT);
   }
 
   if (!email?.trim()) {
-    throw new Error("Email is required.");
+    throw createAppError("Email is required.", 400, ERROR_CODES.INVALID_INPUT);
   }
 
   if (!password) {
-    throw new Error("Password is required.");
+    throw createAppError("Password is required.", 400, ERROR_CODES.INVALID_INPUT);
   }
 
   if (password.length < 8) {
-    throw new Error(
-      "Password must be at least 8 characters."
+    throw createAppError(
+      "Password must be at least 8 characters.",
+      400,
+      ERROR_CODES.INVALID_INPUT
     );
   }
 
@@ -35,8 +39,10 @@ export function validateRegisterInput({
 
   if (phone) {
     if (!isValidKenyanPhone(phone)) {
-      throw new Error(
-        "Invalid Kenyan phone number."
+      throw createAppError(
+        "Invalid Kenyan phone number.",
+        400,
+        ERROR_CODES.INVALID_INPUT
       );
     }
 
@@ -48,14 +54,18 @@ export function validateRegisterInput({
     const dob = new Date(date_of_birth);
 
     if (Number.isNaN(dob.getTime())) {
-      throw new Error(
-        "Invalid date of birth."
+      throw createAppError(
+        "Invalid date of birth.",
+        400,
+        ERROR_CODES.INVALID_INPUT
       );
     }
 
     if (dob > new Date()) {
-      throw new Error(
-        "Date of birth cannot be in the future."
+      throw createAppError(
+        "Date of birth cannot be in the future.",
+        400,
+        ERROR_CODES.INVALID_INPUT
       );
     }
   }
@@ -66,7 +76,7 @@ export function validateRegisterInput({
       gender.toLowerCase()
     )
   ) {
-    throw new Error("Invalid gender.");
+    throw createAppError("Invalid gender.",400, ERROR_CODES.INVALID_INPUT);
   }
 
   return {

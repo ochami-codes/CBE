@@ -1,6 +1,8 @@
 // services/church.service.js
 
 import { pool } from "../../../db.js";
+import { createAppError } from "../../../errors/AppError.js";
+import { ERROR_CODES } from "../../../errors/errorCodes.js";
 import { getOrCreateChurch } from "../../../services/churchService.js";
 
 export async function createChurch({
@@ -9,15 +11,15 @@ export async function createChurch({
   conferenceId,
 }) {
   if (!profileId) {
-    throw new Error("User is required.");
+    throw createAppError("User is required.", 400, ERROR_CODES.INVALID_CREDENTIALS);
   }
 
   if (!churchName?.trim()) {
-    throw new Error("Church name is required.");
+    throw createAppError("Church name is required.", 400, ERROR_CODES.INVALID_CREDENTIALS);
   }
 
   if (!conferenceId) {
-    throw new Error("Conference is required.");
+    throw createAppError("Conference is required.", 400, ERROR_CODES.INVALID_INPUT);
   }
 
   const client = await pool.connect();
@@ -74,7 +76,7 @@ export async function createChurch({
       );
 
       if (!roleRows.length) {
-        throw new Error("Admin role not found.");
+        throw createAppError("Admin role not found.", 404, ERROR_CODES.NOT_FOUND);
       }
 
       await client.query(

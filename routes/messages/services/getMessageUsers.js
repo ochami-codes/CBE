@@ -1,15 +1,17 @@
 import { pool } from "../../../db.js";
+import { createAppError } from "../../../errors/AppError.js";
+import { ERROR_CODES } from "../../../errors/errorCodes.js";
 
 export async function getMessageUsers({
   churchId,
   profileId,
 }) {
   if (!churchId) {
-    throw new Error("Church is required.");
+    throw createAppError("Church is required.", 400, ERROR_CODES.CHURCH_NOT_FOUND);
   }
 
   if (!profileId) {
-    throw new Error("User is required.");
+    throw createAppError("User is required.", 401, ERROR_CODES.AUTHENTICATION_REQUIRED);
   }
 
   const { rows } = await pool.query(

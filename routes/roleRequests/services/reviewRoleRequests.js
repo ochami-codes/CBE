@@ -1,6 +1,8 @@
 // services/roleRequestService.js
 
 import { pool } from "../../../db.js";
+import { createAppError } from "../../../errors/AppError.js";
+import { ERROR_CODES } from "../../../errors/errorCodes.js";
 import { notifyUser } from "../../../services/notifications/notifyUser.js";
 
 export async function reviewRoleRequest({
@@ -9,15 +11,15 @@ export async function reviewRoleRequest({
   action,
 }) {
   if (!requestId) {
-    throw new Error("Request is required.");
+    throw createAppError("Request is required.", 400, ERROR_CODES.INVALID_CREDENTIALS);
   }
 
   if (!reviewerProfileId) {
-    throw new Error("Reviewer is required.");
+    throw createAppError("Reviewer is required.", 500, ERROR_CODES.INTERNAL_SERVER_ERROR);
   }
 
   if (!["approved", "rejected"].includes(action)) {
-    throw new Error("Invalid action.");
+    throw createAppError("Invalid action.", 400, ERROR_CODES.INVALID_OPERATION);
   }
 
   const client = await pool.connect();
@@ -36,13 +38,13 @@ export async function reviewRoleRequest({
     );
 
     if (!rows.length) {
-      throw new Error("Request not found.");
+      throw createAppError("Request not found.", 404, ERROR_CODES.NOT_FOUND);
     }
 
     const request = rows[0];
 
     if (request.role_request_status !== "pending") {
-      throw new Error("Request has already been reviewed.");
+      throw createAppError("Request has already been reviewed.", 409, ERROR_CODES.CONFLICT);
     }
 
     if (action === "approved") {
@@ -57,7 +59,7 @@ export async function reviewRoleRequest({
       );
 
       if (!roleResult.rowCount) {
-        throw new Error("Role not found.");
+        throw createAppError("Role not found.", 404, ERROR_CODES.NOT_FOUND);
       }
 
       await client.query(

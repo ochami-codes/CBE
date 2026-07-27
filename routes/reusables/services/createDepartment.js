@@ -1,4 +1,6 @@
 import { pool } from "../../../db.js";
+import { createAppError } from "../../../errors/AppError.js";
+import { ERROR_CODES } from "../../../errors/errorCodes.js";
 
 export async function createDepartment({
   churchId,
@@ -7,15 +9,15 @@ export async function createDepartment({
   type = null,
 }) {
   if (!churchId) {
-    throw new Error("Church is required.");
+    throw createAppError("Church is required.", 400, ERROR_CODES.INVALID_CREDENTIALS);
   }
 
   if (!name?.trim()) {
-    throw new Error("Department name is required.");
+    throw createAppError("Department name is required.", 400, ERROR_CODES.INVALID_INPUT);
   }
 
   if (!code?.trim()) {
-    throw new Error("Department code is required.");
+    throw createAppError("Department code is required.", 500, ERROR_CODES.INTERNAL_SERVER_ERROR);
   }
 
   const { rows } = await pool.query(

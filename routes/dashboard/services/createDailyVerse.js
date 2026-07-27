@@ -1,4 +1,6 @@
 import { pool } from "../../../db.js";
+import { createAppError } from "../../../errors/AppError.js";
+import { ERROR_CODES } from "../../../errors/errorCodes.js";
 
 export async function createDailyVerse({
   reference,
@@ -6,15 +8,15 @@ export async function createDailyVerse({
   verseDate,
 }) {
   if (!reference) {
-    throw new Error("Reference is required.");
+    throw createAppError("Reference is required.", 400, ERROR_CODES.INVALID_INPUT);
   }
 
   if (!text) {
-    throw new Error("Verse text is required.");
+    throw createAppError("Verse text is required.", 400, ERROR_CODES.INVALID_INPUT);
   }
 
   if (!verseDate) {
-    throw new Error("Verse date is required.");
+    throw createAppError("Verse date is required.", 400, ERROR_CODES.INVALID_INPUT);
   }
 
   const { rows } = await pool.query(

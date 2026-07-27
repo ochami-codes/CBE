@@ -1,8 +1,14 @@
 import { pool } from "../../../db.js";
-
+import { ERROR_CODES } from "../../../errors/errorCodes.js";
+import { createAppError } from "../../../errors/AppError.js";
 export async function getChurchMembers({ churchId }) {
-  if (!churchId) {
-    throw new Error("Church is required.");
+  
+ if (!churchId) {
+    throw createAppError(
+      "Church is required.",
+      400,
+      ERROR_CODES.MISSING_REQUIRED_FIELD
+    );
   }
 
   const { rows } = await pool.query(

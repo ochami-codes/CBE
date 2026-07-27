@@ -3,7 +3,6 @@ import { MemberService } from "./member.service.js";
 export const MemberController = {
   async getMembers(req, res, next) {
     try {
-      console.log("query:", req.query);
       const members =
         await MemberService.getMembers({
           churchId:
@@ -26,17 +25,13 @@ export const MemberController = {
 
   async addMember(req, res, next) {
   try {
-    const {
-      memberId,
-      departmentId,
-    } = req.body;
 
     const assignment =
       await MemberService.addMember({
         churchId:
           req.user.active_church_id,
-        memberId,
-        departmentId,
+        memberId: req.body.memberId,
+        departmentId: req.body.departmentId
       });
 
     res.status(201).json(assignment);
@@ -46,12 +41,11 @@ export const MemberController = {
 },
   async deleteMember(req, res, next) {
     try {
-        const { memberId, departmentId } = req.body;
       await MemberService.deleteMember({
         churchId:
           req.user.active_church_id,
-        memberId,
-        departmentId
+        memberId: req.body.memberId,
+        departmentId: req.body.departmentId
       });
 
       res.json({

@@ -1,5 +1,6 @@
 import { pool } from "../../../db.js";
-
+import { ERROR_CODES } from "../../../errors/errorCodes.js";
+import { createAppError } from "../../../errors/AppError.js";
 export async function approveDestination({
   transferId,
   processedBy,
@@ -26,12 +27,14 @@ export async function approveDestination({
     const transfer = result.rows[0];
 
     if (!transfer) {
-      throw new Error("Transfer not found");
+      throw createAppError("Transfer not found", 400, ERROR_CODES.NOT_FOUND);
     }
 
     if (transfer.status !== "pending_destination") {
-      throw new Error(
-        `Cannot complete a ${transfer.status} transfer`
+      throw createAppError(
+        `Cannot complete a ${transfer.status} transfer`,
+        500,
+        ERROR_CODES.INTERNAL_SERVER_ERROR
       );
     }
 

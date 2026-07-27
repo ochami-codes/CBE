@@ -1,8 +1,10 @@
 import { pool } from "../../../db.js";
+import { createAppError } from "../../../errors/AppError.js";
+import { ERROR_CODES } from "../../../errors/errorCodes.js";
 
 export async function getMyProfile({profileId}) {
   if (!profileId) {
-    throw new Error("Profile is required.");
+    throw createAppError("Profile is required.", 400, ERROR_CODES.INVALID_CREDENTIALS);
   }
 
   const { rows } = await pool.query(
@@ -21,7 +23,7 @@ export async function getMyProfile({profileId}) {
   );
 
   if (!rows.length) {
-    throw new Error("Profile not found.");
+    throw createAppError("Profile not found.", 404, ERROR_CODES.USER_NOT_FOUND);
   }
 
   return rows[0];

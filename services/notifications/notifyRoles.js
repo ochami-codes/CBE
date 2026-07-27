@@ -1,6 +1,8 @@
 // services/notificationService.js
 
 import { pool } from "../../db.js";
+import { createAppError } from "../../errors/AppError.js";
+import { ERROR_CODES } from "../../errors/errorCodes.js";
 
 export async function notifyRoles({
   client,
@@ -13,11 +15,11 @@ export async function notifyRoles({
   relatedType = null,
 }) {
   if (!churchId) {
-    throw new Error("churchId is required.");
+    throw createAppError("churchId is required.", 400, ERROR_CODES.INVALID_CREDENTIALS);
   }
 
   if (!roles?.length) {
-    throw new Error("At least one role is required.");
+    throw createAppError("At least one role is required.", 500, ERROR_CODES.INTERNAL_SERVER_ERROR);
   }
 const db = client ?? pool
   await db.query(

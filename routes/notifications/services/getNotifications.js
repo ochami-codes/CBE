@@ -1,6 +1,8 @@
 // services/notification.service.js
 
 import { pool } from "../../../db.js";
+import { createAppError } from "../../../errors/AppError.js";
+import { ERROR_CODES } from "../../../errors/errorCodes.js";
 
 export async function getNotifications({
   profileId,
@@ -9,11 +11,11 @@ export async function getNotifications({
   limit = 10,
 }) {
   if (!profileId) {
-    throw new Error("User is required.");
+    throw createAppError("User is required.", 400, ERROR_CODES.INVALID_CREDENTIALS);
   }
 
   if (!churchId) {
-    throw new Error("Church is required.");
+    throw createAppError("Church is required.", 400, ERROR_CODES.INVALID_CREDENTIALS);
   }
 
   const pageNumber = Math.max(Number(page) || 1, 1);

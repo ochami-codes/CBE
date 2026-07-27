@@ -1,4 +1,6 @@
 import { pool } from "../../../db.js";
+import { createAppError } from "../../../errors/AppError.js";
+import { ERROR_CODES } from "../../../errors/errorCodes.js";
 
 export async function addMember({
   churchId,
@@ -28,8 +30,10 @@ export async function addMember({
       );
 
     if (!memberResult.rowCount) {
-      throw new Error(
-        "Member not found."
+      throw createAppError(
+        "Member not found.",
+        404,
+        ERROR_CODES.MEMBER_NOT_FOUND
       );
     }
 
@@ -50,8 +54,10 @@ export async function addMember({
       );
 
     if (!departmentResult.rowCount) {
-      throw new Error(
-        "Department not found."
+      throw createAppError(
+        "Department not found.",
+        404,
+        ERROR_CODES.NOT_FOUND
       );
     }
 
@@ -72,8 +78,11 @@ export async function addMember({
       );
 
     if (existingResult.rowCount) {
-      throw new Error(
-        "Member already belongs to this department."
+      throw createAppError(
+        "Member already belongs to this department.",
+        409,
+        ERROR_CODES.DUPLICATE_ENTRY
+
       );
     }
 

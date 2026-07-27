@@ -1,15 +1,17 @@
 import { pool } from "../../../db.js";
+import { createAppError } from "../../../errors/AppError.js";
+import { ERROR_CODES } from "../../../errors/errorCodes.js";
 
 export async function getThreadWithUser({
   profileId,
   otherProfileId,
 }) {
   if (!profileId) {
-    throw new Error("User is required.");
+    throw createAppError("User is required.", 401, ERROR_CODES.AUTHENTICATION_REQUIRED);
   }
 
   if (!otherProfileId) {
-    throw new Error("Recipient is required.");
+    throw createAppError("Recipient is required.", 404, ERROR_CODES.NOT_FOUND);
   }
 
   const { rows } = await pool.query(

@@ -1,4 +1,6 @@
 import { pool } from "../../../db.js";
+import { createAppError } from "../../../errors/AppError.js";
+import { ERROR_CODES } from "../../../errors/errorCodes.js";
 
 export async function deleteMember({
   churchId,
@@ -24,8 +26,10 @@ export async function deleteMember({
   );
 
   if (!rowCount) {
-    throw new Error(
-      "Member is not assigned to this department."
+    throw createAppError(
+      "Member is not assigned to this department.",
+      404,
+      ERROR_CODES.MEMBER_NOT_FOUND
     );
   }
 

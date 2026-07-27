@@ -20,6 +20,7 @@ import roleRoutes from "./routes/roleRequests/role.requests.routes.js";
 import reusableRoutes from "./routes/reusables/reusables.routes.js";
 import sabbathSchoolRoutes from "./routes/sabbathSchool/sabbathSchool.routes.js";
 import { supabaseAdmin } from "./supabaseClient.js";
+import { errorHandler } from "./errors/errorHandler.js";
 
 const app = express();
 
@@ -71,6 +72,8 @@ app.use("/role-requests", userContext, roleRoutes);
 app.use("/sabbath-school", userContext, sabbathSchoolRoutes);
 app.use("/admin", userContext, adminRoutes);
 
+
+app.use(errorHandler);
 /* ------------------ Health check ------------------ */
 app.get("/", (req, res) => {
   res.json({ status: "API running" });

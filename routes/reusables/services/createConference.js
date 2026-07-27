@@ -1,15 +1,17 @@
 import { pool } from "../../../db.js";
+import { createAppError } from "../../../errors/AppError.js";
+import { ERROR_CODES } from "../../../errors/errorCodes.js";
 
 export async function createConference({
   name,
   conferenceCode,
 }) {
   if (!name?.trim()) {
-    throw new Error("Conference name is required.");
+    throw createAppError("Conference name is required.", 400, ERROR_CODES.INVALID_INPUT);
   }
 
   if (!conferenceCode?.trim()) {
-    throw new Error("Conference code is required.");
+    throw createAppError("Conference code is required.", 500, ERROR_CODES.INTERNAL_SERVER_ERROR);
   }
 
   const { rows } = await pool.query(

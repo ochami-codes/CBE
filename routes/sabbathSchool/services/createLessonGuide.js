@@ -4,6 +4,8 @@ import {
   isValidKenyanPhone,
 } from "../../../utils/phone.js";
 import  { toNameCase } from "../../../utils/formatters.js";
+import { createAppError } from "../../../errors/AppError.js";
+import { ERROR_CODES } from "../../../errors/errorCodes.js";
 
 export async function createLessonGuide({
   churchId,
@@ -20,15 +22,15 @@ export async function createLessonGuide({
   // Validate required fields
   // -------------------------
   if (!lessonType) {
-    throw new Error("Lesson type is required.");
+    throw createAppError("Lesson type is required.", 400, ERROR_CODES.INVALID_INPUT);
   }
 
   if (!year) {
-    throw new Error("Year is required.");
+    throw createAppError("Year is required.", 400, ERROR_CODES.INVALID_INPUT);
   }
 
   if (!quarter) {
-    throw new Error("Quarter is required.");
+    throw createAppError("Quarter is required.", 400, ERROR_CODES.INVALID_INPUT);
   }
 
   const hasMember = Boolean(memberId);
@@ -38,17 +40,17 @@ export async function createLessonGuide({
 
   if (!hasMember) {
     if (!nameOverride?.trim()) {
-      throw new Error("Name is required.");
+      throw createAppError("Name is required.", 400, ERROR_CODES.INVALID_INPUT);
     }
 
     if (!phoneNumber?.trim()) {
-      throw new Error("Phone number is required.");
+      throw createAppError("Phone number is required.", 400, ERROR_CODES.INVALID_INPUT);
     }
 
     normalizedName = toNameCase(nameOverride);
 
     if (!isValidKenyanPhone(phoneNumber)) {
-      throw new Error("Invalid Kenyan phone number.");
+      throw createAppError("Invalid Kenyan phone number.", 400, ERROR_CODES.INVALID_INPUT);
     }
 
     normalizedPhone =
@@ -71,7 +73,7 @@ export async function createLessonGuide({
     );
 
     if (memberResult.rowCount === 0) {
-      throw new Error("Member not found.");
+      throw createAppError("Member not found.", 404, ERROR_CODES.MEMBER_NOT_FOUND);
     }
   }
 
@@ -118,8 +120,10 @@ export async function createLessonGuide({
   );
 
   if (existing.rowCount > 0) {
-    throw new Error(
-      "This person is already subscribed for this quarter."
+    throw createAppError(
+      "This person is already subscribed for this quarter.",
+      409,
+      ERROR_CODES.DUPLICATE_ENTRY
     );
   }
 

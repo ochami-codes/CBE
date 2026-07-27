@@ -1,10 +1,12 @@
 // services/membershipRequestService.js
 
 import { pool } from "../../../db.js";
+import { createAppError } from "../../../errors/AppError.js";
+import { ERROR_CODES } from "../../../errors/errorCodes.js";
 
 export async function getMyMembershipRequest({profileId}) {
   if (!profileId) {
-    throw new Error("Profile is required.");
+    throw createAppError("Profile is required.", 401, ERROR_CODES.AUTHENTICATION_REQUIRED);
   }
 
   const { rows } = await pool.query(

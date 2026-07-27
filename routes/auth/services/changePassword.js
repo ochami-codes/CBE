@@ -1,6 +1,7 @@
 
 import { supabaseAdmin } from "../../../supabaseClient.js";
-
+import { ERROR_CODES } from "../../../errors/errorCodes.js";
+import { createAppError } from "../../../errors/AppError.js";
 import { validateChangePasswordInput } from "../../../validators/auth/changePasswordValidator.js";
 
 export async function changePassword({
@@ -8,8 +9,10 @@ export async function changePassword({
   newPassword,
 }) {
   if (!authUserId) {
-    throw new Error(
-      "Authenticated user not found."
+    throw  createAppError(
+      "Authenticated user not found.",
+      404,
+      ERROR_CODES.NOT_FOUND
     );
   }
 
@@ -27,9 +30,10 @@ export async function changePassword({
     );
 
   if (error) {
-    throw new Error(
-      error.message ||
-        "Failed to update password."
+    throw createAppError(
+       "Failed to update password.",
+       500,
+       ERROR_CODES.INTERNAL_SERVER_ERROR
     );
   }
 

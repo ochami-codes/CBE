@@ -1,6 +1,8 @@
 // services/membershipRequestService.js
 
 import { pool } from "../../../db.js";
+import { createAppError } from "../../../errors/AppError.js";
+import { ERROR_CODES } from "../../../errors/errorCodes.js";
 import { notifyRoles } from "../../../services/notifications/notifyRoles.js";
 
 export async function createMembershipRequest({
@@ -8,11 +10,11 @@ export async function createMembershipRequest({
   churchId,
 }) {
   if (!profileId) {
-    throw new Error("Profile is required.");
+    throw createAppError("Profile is required.",400, ERROR_CODES.INVALID_CREDENTIALS );
   }
 
   if (!churchId) {
-    throw new Error("Church is required.");
+    throw createAppError("Church is required.", 400, ERROR_CODES.INVALID_CREDENTIALS);
   }
 
   const client = await pool.connect();
@@ -50,8 +52,10 @@ export async function createMembershipRequest({
     );
 
     if (existingMember) {
-      throw new Error(
-        "You are already a member of this church."
+      throw createAppError(
+        "You are already a member of this church.",
+        409,
+        ERROR_CODES.ALREADY_EXISTS
       );
     }
 

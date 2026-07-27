@@ -1,5 +1,6 @@
+import { ERROR_CODES } from "../../../errors/errorCodes.js";
 import { supabaseAdmin } from "../../../supabaseClient.js";
-
+import { createAppError } from "../../../errors/AppError.js";
 import { validateResetPasswordInput } from "../../../validators/auth/resetPasswordValidator.js";
 
 export async function resetPassword({
@@ -38,8 +39,10 @@ export async function resetPassword({
       error
     );
 
-    throw new Error(
-      "Server error. Please try again later."
+    throw createAppError(
+      "Server error. Please try again later.",
+      500,
+      ERROR_CODES.INTERNAL_SERVER_ERROR
     );
   }
 }

@@ -1,4 +1,6 @@
 import { pool } from "../../../db.js";
+import { createAppError } from "../../../errors/AppError.js";
+import { ERROR_CODES } from "../../../errors/errorCodes.js";
 import { notifyUser } from "./notificationService.js";
 
 export async function updateMemberRoles({
@@ -8,19 +10,19 @@ export async function updateMemberRoles({
   roles,
 }) {
   if (!memberId) {
-    throw new Error("Member is required.");
+    throw createAppError("Member is required.", 400, ERROR_CODES.INVALID_CREDENTIALS);
   }
 
   if (!churchId) {
-    throw new Error("Church is required.");
+    throw createAppError("Church is required.", 500, ERROR_CODES.INTERNAL_SERVER_ERROR);
   }
 
   if (!actorMemberId) {
-    throw new Error("Authenticated member is required.");
+    throw createAppError("Authenticated member is required.", 500, ERROR_CODES.INTERNAL_SERVER_ERROR);
   }
 
   if (!Array.isArray(roles) || !roles.length) {
-    throw new Error("At least one role is required.");
+    throw createAppError("At least one role is required.", 400, ERROR_CODES.INVALID_INPUT);
   }
 
   // Normalize and remove duplicates
@@ -34,8 +36,10 @@ export async function updateMemberRoles({
 
   // Admin is a protected system role
   if (normalizedRoles.includes("admin")) {
-    throw new Error(
-      "The admin role cannot be assigned or modified."
+    throw createAppError(
+      "The admin role cannot be assigned or modified.",
+      403,
+      ERROR_CODES.FORBIDDEN
     );
   }
 
@@ -62,7 +66,7 @@ export async function updateMemberRoles({
     );
 
     if (!members.length) {
-      throw new Error("Member not found.");
+      throw createAppError("Member not found.", 404, ERROR_CODES.MEMBER_NOT_FOUND);
     }
 
     const member = members[0];
@@ -72,8 +76,10 @@ export async function updateMemberRoles({
      * their own roles.
      */
     if (member.id === actorMemberId) {
-      throw new Error(
-        "Admins cannot modify their own roles."
+      throw createAppError(
+        "Admins cannot modify their own roles.",
+        400,
+        ERROR_CODES.INVALID_OPERATION
       );
     }
 
@@ -95,8 +101,10 @@ export async function updateMemberRoles({
     );
 
     if (adminRole.length) {
-      throw new Error(
-        "The admin role cannot be modified."
+      throw createAppError(
+        "The admin role cannot be modified.",
+        403,
+        ERROR_CODES.FORBIDDEN
       );
     }
 
@@ -114,8 +122,10 @@ export async function updateMemberRoles({
     );
 
     if (dbRoles.length !== normalizedRoles.length) {
-      throw new Error(
-        "One or more roles are invalid."
+      throw createAppError(
+        "One or more roles are invalid.",
+        400,
+        ERROR_CODES.INVALID_INPUT
       );
     }
 

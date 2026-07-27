@@ -1,4 +1,6 @@
 import { pool } from "../../../db.js";
+import { createAppError } from "../../../errors/AppError.js";
+import { ERROR_CODES } from "../../../errors/errorCodes.js";
 
 export async function updateLessonGuide({
   id,
@@ -30,8 +32,10 @@ export async function updateLessonGuide({
   );
 
   if (existing.rowCount > 0) {
-    throw new Error(
-      "Member is already subscribed for this quarter."
+    throw createAppError(
+      "Member is already subscribed for this quarter.",
+      409,
+      ERROR_CODES.CONFLICT
     );
   }
 
@@ -73,8 +77,10 @@ export async function updateLessonGuide({
   );
 
   if (rows.length === 0) {
-    throw new Error(
-      "Lesson guide subscription not found."
+    throw createAppError(
+      "Lesson guide subscription not found.",
+      404,
+      ERROR_CODES.NOT_FOUND
     );
   }
 

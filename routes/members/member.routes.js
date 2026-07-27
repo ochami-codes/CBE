@@ -7,8 +7,8 @@ const authorized = authorizeDepartment("manage_dept_members");
 
 router.get("/", MemberController.getMembers);
 
-router.post("/", authorized, MemberController.addMember);
+router.post("/", MemberController.addMember);
 
-router.delete("/", authorized, MemberController.deleteMember);
+router.delete("/", MemberController.deleteMember);
 
 export default router;

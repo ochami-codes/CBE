@@ -1,3 +1,7 @@
+import { pool } from "../../../db.js";
+import { createAppError } from "../../../errors/AppError.js";
+import { ERROR_CODES } from "../../../errors/errorCodes.js";
+
 export async function deleteDepartmentAnnouncement({
   churchId,
   departmentId,
@@ -19,8 +23,10 @@ export async function deleteDepartmentAnnouncement({
   );
 
   if (rowCount === 0) {
-    throw new Error(
-      "Department announcement not found."
+    throw createAppError(
+      "Department announcement not found.",
+      404,
+      ERROR_CODES.NOT_FOUND
     );
   }
 }

@@ -1,3 +1,6 @@
+import { createAppError } from "../../errors/AppError.js";
+import { ERROR_CODES } from "../../errors/errorCodes.js";
+
 export function validateSendMessageInput({
   churchId,
   content,
@@ -5,20 +8,26 @@ export function validateSendMessageInput({
   threadId,
 }) {
   if (!churchId) {
-    throw new Error(
-      "No active church selected."
+    throw createAppError(
+      "No active church selected.",
+      400,
+      ERROR_CODES.INVALID_INPUT
     );
   }
 
   if (!content?.trim()) {
-    throw new Error(
-      "Message cannot be empty."
+    throw createAppError(
+      "Message cannot be empty.",
+      400,
+      ERROR_CODES.INVALID_INPUT
     );
   }
 
   if (!recipientProfileId && !threadId) {
-    throw new Error(
-      "Recipient is required."
+    throw createAppError(
+      "Recipient is required.",
+      400,
+      ERROR_CODES.INVALID_INPUT
     );
   }
 }

@@ -1,4 +1,6 @@
 import { pool } from "../../../db.js";
+import { createAppError } from "../../../errors/AppError.js";
+import { ERROR_CODES } from "../../../errors/errorCodes.js";
 
 export async function updateConference(
   conferenceId,
@@ -6,7 +8,7 @@ export async function updateConference(
   conferenceCode,
 ) {
   if (!conferenceId) {
-    throw new Error("Conference is required.");
+    throw createAppError("Conference is required.", 400, ERROR_CODES.INVALID_INPUT);
   }
 
   const updates = [];
@@ -27,7 +29,7 @@ export async function updateConference(
   }
 
   if (!updates.length) {
-    throw new Error("Nothing to update.");
+    throw createAppError("Nothing to update.", 409, ERROR_CODES.CONFLICT);
   }
 
   values.push(conferenceId);
@@ -46,7 +48,7 @@ export async function updateConference(
   );
 
   if (!rows.length) {
-    throw new Error("Conference not found.");
+    throw createAppError("Conference not found.", 404, ERROR_CODES.NOT_FOUND);
   }
 
   return rows[0];

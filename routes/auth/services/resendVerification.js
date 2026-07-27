@@ -21,14 +21,15 @@ export async function resendVerification({
         },
       });
 
-    // Prevent account enumeration
-    if (error) {
-      console.error(
-        "Resend verification:",
-        error
-      );
+   if (error) {
+  console.error(
+    "Resend verification failed:",
+    {
+      message: error.message,
+      code: error.code,
     }
-
+  );
+}
     return {
       message:
         "If the email exists, a verification link has been sent.",

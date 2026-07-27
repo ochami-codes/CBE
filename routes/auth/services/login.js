@@ -2,7 +2,8 @@
 
 import { supabaseAuth, supabaseAdmin } from "../../../supabaseClient.js";
 import { validateLoginInput } from "../../../validators/auth/loginValidator.js";
-
+import { createAppError } from "../../../errors/AppError.js";
+import { ERROR_CODES } from "../../../errors/errorCodes.js";
 export async function login({email, password}) {
   validateLoginInput({email, password});
 
@@ -13,14 +14,16 @@ export async function login({email, password}) {
     });
 
   if (error || !data?.user || !data?.session) {
-    throw new Error("Invalid email or password.");
+    throw createAppError("Invalid email or password.", 400, ERROR_CODES.INVALID_CREDENTIALS );
   }
 
   const { user, session } = data;
 
   if (!user.email_confirmed_at) {
-    throw new Error(
-      "Please verify your email before logging in."
+    throw createAppError(
+      "Please verify your email before logging in.",
+      400,
+      ERROR_CODES.EMAIL_NOT_CONFIRMED
     );
   }
 
@@ -40,7 +43,7 @@ export async function login({email, password}) {
     .single();
 
   if (profileError || !profile) {
-    throw new Error("Profile not found.");
+    throw createAppError("Profile not found.", 404, ERROR_CODES.NOT_FOUND );
   }
 
   return {

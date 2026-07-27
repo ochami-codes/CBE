@@ -1,4 +1,6 @@
 import { pool } from "../../../db.js";
+import { ERROR_CODES } from "../../../errors/errorCodes.js";
+import { createAppError } from "../../../errors/AppError.js";
 
 /* =========================================
    MY DEPARTMENT ANNOUNCEMENTS
@@ -14,14 +16,18 @@ export async function getMyDepartmentAnnouncements({
   ----------------------------------------- */
 
   if (!profileId) {
-    throw new Error(
-      "Profile ID is required."
+    throw createAppError(
+      "Authentication required",
+      401,
+      ERROR_CODES.FORBIDDEN
     );
   }
 
   if (!churchId) {
-    throw new Error(
-      "Church ID is required."
+    throw createAppError(
+      "Church required.",
+      400,
+      ERROR_CODES.INVALID_CREDENTIALS
     );
   }
 
@@ -38,8 +44,10 @@ export async function getMyDepartmentAnnouncements({
       !Number.isInteger(parsedLimit) ||
       parsedLimit <= 0
     ) {
-      throw new Error(
-        "Limit must be a positive integer."
+      throw createAppError(
+        "Limit must be a positive integer.",
+        400,
+        ERROR_CODES.INVALID_INPUT
       );
     }
   }

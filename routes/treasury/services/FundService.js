@@ -2,6 +2,8 @@ import { pool } from "../../../db.js";
 import { getFunds } from "./fundsSummary/getFunds.js";
 import { getUnremittedFunds } from "./fundsSummary/getUnremittedFunds.js";
 import { buildFundsSummary } from "./fundsSummary/buildFundsSummary.js";
+import { createAppError } from "../../../errors/AppError.js";
+import { ERROR_CODES } from "../../../errors/errorCodes.js";
 export const FundsService = {
   async create({
   churchId,
@@ -22,8 +24,10 @@ export const FundsService = {
   );
 
   if (duplicateResult.rowCount > 0) {
-    throw new Error(
-      "A fund with this name already exists."
+    throw createAppError(
+      "A fund with this name already exists.",
+      400,
+      ERROR_CODES.CONFLICT
     );
   }
 
@@ -40,8 +44,10 @@ export const FundsService = {
   );
 
   if (groupResult.rowCount === 0) {
-    throw new Error(
-      "Local Church Funds group not found."
+    throw createAppError(
+      "Local Church Funds group not found.",
+      404,
+      ERROR_CODES.NOT_FOUND
     );
   }
 

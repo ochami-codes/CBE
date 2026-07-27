@@ -1,4 +1,6 @@
 import { pool } from "../../../../db.js";
+import { createAppError } from "../../../../errors/AppError.js";
+import { ERROR_CODES } from "../../../../errors/errorCodes.js";
 
 export async function validateMember({
   churchId,
@@ -23,8 +25,10 @@ export async function validateMember({
     );
 
   if (result.rowCount === 0) {
-    throw new Error(
-      "Member not found."
+    throw createAppError(
+      "Member not found.",
+      404,
+      ERROR_CODES.MEMBER_NOT_FOUND
     );
   }
 }

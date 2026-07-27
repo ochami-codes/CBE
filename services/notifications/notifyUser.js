@@ -1,4 +1,6 @@
 import { pool } from "../../db.js";
+import { createAppError } from "../../errors/AppError.js";
+import { ERROR_CODES } from "../../errors/errorCodes.js";
 
 export async function notifyUser({
   client,
@@ -11,11 +13,11 @@ export async function notifyUser({
   relatedType = null,
 }) {
   if (!userId) {
-    throw new Error("userId is required.");
+    throw createAppError("userId is required.", 400, ERROR_CODES.INVALID_CREDENTIALS);
   }
 
   if (!churchId) {
-    throw new Error("churchId is required.");
+    throw createAppError("churchId is required.", 500, ERROR_CODES.INTERNAL_SERVER_ERROR);
   }
 
   const db = client ?? pool;

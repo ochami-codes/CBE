@@ -1,4 +1,6 @@
 import { pool } from "../../../db.js";
+import { createAppError } from "../../../errors/AppError.js";
+import { ERROR_CODES } from "../../../errors/errorCodes.js";
 
 export async function approveSource({
   transferId,
@@ -26,12 +28,14 @@ export async function approveSource({
     const transfer = result.rows[0];
 
     if (!transfer) {
-      throw new Error("Transfer not found");
+      throw createAppError("Transfer not found", 400, ERROR_CODES.NOT_FOUND);
     }
 
     if (transfer.status !== "requested") {
-      throw new Error(
-        `Cannot approve a ${transfer.status} transfer`
+      throw createAppError(
+        `Cannot approve a ${transfer.status} transfer`,
+        422,
+        ERROR_CODES.VALIDATION_ERROR
       );
     }
 

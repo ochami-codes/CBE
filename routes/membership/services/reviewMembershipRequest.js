@@ -1,6 +1,8 @@
 // services/membershipRequestService.js
 
 import { pool } from "../../../db.js";
+import { createAppError } from "../../../errors/AppError.js";
+import { ERROR_CODES } from "../../../errors/errorCodes.js";
 import { notifyUser } from "../../../services/notifications/notifyUser.js";
 import { bumpProfileVersionTx } from "../../../utils/profileVersion.js";
 
@@ -11,19 +13,19 @@ export async function reviewMembershipRequest({
   action,
 }) {
   if (!requestId) {
-    throw new Error("Request is required.");
+    throw createAppError("Request is required.", 400, ERROR_CODES.INVALID_CREDENTIALS);
   }
 
   if (!churchId) {
-    throw new Error("Church is required.");
+    throw createAppError("Church is required.", 400, ERROR_CODES.INVALID_CREDENTIALS);
   }
 
   if (!reviewedBy) {
-    throw new Error("Reviewer is required.");
+    throw createAppError("Reviewer is required.", 400, ERROR_CODES.INVALID_CREDENTIALS);
   }
 
   if (!["approved", "rejected"].includes(action)) {
-    throw new Error("Invalid action.");
+    throw createAppError("Invalid action.", 400, ERROR_CODES.INVALID_OPERATION);
   }
 
   const client = await pool.connect();
@@ -42,23 +44,25 @@ export async function reviewMembershipRequest({
     );
 
     if (!rows.length) {
-      throw new Error("Membership request not found.");
+      throw createAppError("Membership request not found.", 404, ERROR_CODES.NOT_FOUND);
     }
 
     const request = rows[0];
 
     if (request.church_id !== churchId) {
-      throw new Error("Unauthorized church access.");
+      throw createAppError("Unauthorized church access.", 403, ERROR_CODES.FORBIDDEN);
     }
 
     if (request.source !== "user_request") {
-      throw new Error(
-        "This is not a user membership request."
+      throw createAppError(
+        "This is not a user membership request.",
+        404,
+        ERROR_CODES.NOT_FOUND
       );
     }
 
     if (request.status !== "requested") {
-      throw new Error("Request has already been reviewed.");
+      throw createAppError("Request has already been reviewed.", 409, ERROR_CODES.ALREADY_EXISTS);
     }
 
     await client.query(

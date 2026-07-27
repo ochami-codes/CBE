@@ -1,23 +1,37 @@
 import { pool } from "../../../db.js";
 import { notifyUser } from "../../../services/notifications/notifyUser.js";
 
+import { createAppError } from "../../../errors/AppError.js";
+import { ERROR_CODES } from "../../../errors/errorCodes.js";
+
 export async function updateMemberRoles({
   memberId,
   churchId,
   roles,
 }) {
   if (!memberId) {
-    throw new Error("Member is required.");
+    throw createAppError(
+      "Member is required.",
+      400,
+      ERROR_CODES.MISSING_REQUIRED_FIELD
+    );
   }
 
   if (!churchId) {
-    throw new Error("Church is required.");
+    throw createAppError(
+      "Church is required.",
+      400,
+      ERROR_CODES.MISSING_REQUIRED_FIELD
+    );
   }
 
   if (!Array.isArray(roles) || !roles.length) {
-    throw new Error("At least one role is required.");
+    throw createAppError(
+      "At least one role is required.",
+      400,
+      ERROR_CODES.MISSING_REQUIRED_FIELD
+    );
   }
-
 
   const client = await pool.connect();
 
@@ -38,7 +52,11 @@ export async function updateMemberRoles({
     );
 
     if (!members.length) {
-      throw new Error("Member not found.");
+      throw createAppError(
+        "Member not found.",
+        404,
+        ERROR_CODES.MEMBER_NOT_FOUND
+      );
     }
 
     const member = members[0];
@@ -53,7 +71,11 @@ export async function updateMemberRoles({
     );
 
     if (dbRoles.length !== roles.length) {
-      throw new Error("One or more roles are invalid.");
+      throw createAppError(
+        "One or more roles are invalid.",
+        400,
+        ERROR_CODES.INVALID_INPUT
+      );
     }
 
     const roleMap = new Map(
@@ -93,7 +115,7 @@ export async function updateMemberRoles({
       churchId,
       type: "role_update",
       title: "Roles Updated",
-      message: `Your church roles have been updated. Your primary role is now.`,
+      message: "Your church roles have been updated.",
       relatedId: memberId,
       relatedType: "member",
     });

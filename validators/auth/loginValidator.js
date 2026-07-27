@@ -1,13 +1,16 @@
+import { createAppError } from "../../errors/AppError.js";
+import { ERROR_CODES } from "../../errors/errorCodes.js";
+
 export function validateLoginInput({
   email,
   password,
 }) {
   if (!email?.trim()) {
-    throw new Error("Email is required.");
+    throw createAppError("Email is required.", 400, ERROR_CODES.INVALID_INPUT);
   }
 
   if (!password) {
-    throw new Error("Password is required.");
+    throw createAppError("Password is required.", 400, ERROR_CODES.INVALID_INPUT);
   }
 
   return {

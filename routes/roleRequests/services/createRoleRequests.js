@@ -5,6 +5,8 @@ import {
   REQUESTABLE_ROLES,
 } from "../../../config/roles.js";
 import { notifyRoles } from "../../../services/notifications/notifyRoles.js";
+import { createAppError } from "../../../errors/AppError.js";
+import { ERROR_CODES } from "../../../errors/errorCodes.js";
 
 export async function createRoleRequests({
   memberId,
@@ -12,25 +14,25 @@ export async function createRoleRequests({
   requestedRole,
 }) {
   if (!memberId) {
-    throw new Error("Member is required.");
+    throw createAppError("Member is required.", 400, ERROR_CODES.INVALID_CREDENTIALS);
   }
 
   if (!churchId) {
-    throw new Error("Church is required.");
+    throw createAppError("Church is required.", 400, ERROR_CODES.INVALID_CREDENTIALS);
   }
 
   if (!requestedRole) {
-    throw new Error("Requested role is required.");
+    throw createAppError("Requested role is required.", 400, ERROR_CODES.INVALID_INPUT);
   }
 
   requestedRole = normalizeRole(requestedRole);
 
   if (!isValidRole(requestedRole)) {
-    throw new Error("Invalid role.");
+    throw createAppError("Invalid role.", 400, ERROR_CODES.INVALID_INPUT);
   }
 
   if (!REQUESTABLE_ROLES.includes(requestedRole)) {
-    throw new Error("You cannot request this role.");
+    throw createAppError("You cannot request this role.", 403, ERROR_CODES.FORBIDDEN);
   }
 
   const client = await pool.connect();
@@ -52,8 +54,10 @@ export async function createRoleRequests({
     );
 
     if (existing.rowCount) {
-      throw new Error(
-        "You already have a pending request for this role."
+      throw createAppError(
+        "You already have a pending request for this role.",
+        409,
+        ERROR_CODES.CONFLICT
       );
     }
 

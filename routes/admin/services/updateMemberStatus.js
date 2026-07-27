@@ -3,6 +3,9 @@
 import { pool } from "../../../db.js";
 import { notifyUser } from "../../../services/notifications/notifyUser.js";
 
+import { createAppError } from "../../../errors/AppError.js";
+import { ERROR_CODES } from "../../../errors/errorCodes.js";
+
 export async function updateMemberStatus({
   memberId,
   churchId,
@@ -11,19 +14,35 @@ export async function updateMemberStatus({
   performedBy,
 }) {
   if (!memberId) {
-    throw new Error("Member is required.");
+    throw createAppError(
+      "Member is required.",
+      400,
+      ERROR_CODES.MISSING_REQUIRED_FIELD
+    );
   }
 
   if (!churchId) {
-    throw new Error("Church is required.");
+    throw createAppError(
+      "Church is required.",
+      400,
+      ERROR_CODES.MISSING_REQUIRED_FIELD
+    );
   }
 
   if (!["suspend", "activate"].includes(action)) {
-    throw new Error("Invalid action.");
+    throw createAppError(
+      "Invalid action.",
+      400,
+      ERROR_CODES.INVALID_INPUT
+    );
   }
 
   if (performedBy === memberId) {
-    throw new Error("You cannot modify your own status.");
+    throw createAppError(
+      "You cannot modify your own status.",
+      403,
+      ERROR_CODES.OPERATION_NOT_ALLOWED
+    );
   }
 
   const client = await pool.connect();
@@ -46,7 +65,11 @@ export async function updateMemberStatus({
     );
 
     if (!rows.length) {
-      throw new Error("Member not found.");
+      throw createAppError(
+        "Member not found.",
+        404,
+        ERROR_CODES.MEMBER_NOT_FOUND
+      );
     }
 
     const member = rows[0];
@@ -55,14 +78,22 @@ export async function updateMemberStatus({
       action === "suspend" &&
       member.status === "suspended"
     ) {
-      throw new Error("Member is already suspended.");
+      throw createAppError(
+        "Member is already suspended.",
+        409,
+        ERROR_CODES.INVALID_OPERATION
+      );
     }
 
     if (
       action === "activate" &&
       member.status !== "suspended"
     ) {
-      throw new Error("Member is not suspended.");
+      throw createAppError(
+        "Member is not suspended.",
+        409,
+        ERROR_CODES.INVALID_OPERATION
+      );
     }
 
     const nextStatus =
@@ -101,7 +132,9 @@ export async function updateMemberStatus({
           : "Membership Reactivated",
       message:
         action === "suspend"
-          ? `Your membership has been suspended.${reason ? ` Reason: ${reason}` : ""}`
+          ? `Your membership has been suspended.${
+              reason ? ` Reason: ${reason}` : ""
+            }`
           : "Your membership has been reactivated.",
       relatedId: memberId,
       relatedType: "member",

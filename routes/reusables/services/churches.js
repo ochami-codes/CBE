@@ -1,4 +1,6 @@
 import { pool } from "../../../db.js";
+import { createAppError } from "../../../errors/AppError.js";
+import { ERROR_CODES } from "../../../errors/errorCodes.js";
 
 export async function getChurches({
   search = "",
@@ -80,7 +82,7 @@ export async function getChurches({
 
 export async function getChurch(churchId) {
   if (!churchId) {
-    throw new Error("Church is required.");
+    throw createAppError("Church is required.", 400, ERROR_CODES.INVALID_CREDENTIALS);
   }
 
   const { rows } = await pool.query(
@@ -94,7 +96,7 @@ export async function getChurch(churchId) {
   );
 
   if (!rows.length) {
-    throw new Error("Church not found.");
+    throw createAppError("Church not found.", 404, ERROR_CODES.CHURCH_NOT_FOUND);
   }
 
   return rows[0];

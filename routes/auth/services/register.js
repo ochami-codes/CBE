@@ -6,6 +6,8 @@ import {
 import { pool } from "../../../db.js";
 
 import { validateRegisterInput } from "../../../validators/auth/registerValidator.js";
+import { createAppError } from "../../../errors/AppError.js";
+import { ERROR_CODES } from "../../../errors/errorCodes.js";
 
 export async function register(input) {
   const client = await pool.connect();
@@ -46,8 +48,10 @@ export async function register(input) {
     const userId = authData?.user?.id;
 
     if (!userId) {
-      throw new Error(
-        "Auth user creation failed."
+      throw new createAppError(
+        "Auth user creation failed.",
+        500,
+        ERROR_CODES.INTERNAL_SERVER_ERROR
       );
     }
 
@@ -81,8 +85,10 @@ export async function register(input) {
     const profile = rows[0];
 
     if (!profile) {
-      throw new Error(
-        "Profile was not created by trigger."
+      throw createAppError(
+        "Profile was not created by trigger.",
+        500,
+        ERROR_CODES.DATABASE_ERROR
       );
     }
 

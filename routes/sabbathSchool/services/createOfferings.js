@@ -1,4 +1,6 @@
 import { pool } from "../../../db.js";
+import { createAppError } from "../../../errors/AppError.js";
+import { ERROR_CODES } from "../../../errors/errorCodes.js";
 
 export async function createOfferings({
   churchId,
@@ -6,12 +8,14 @@ export async function createOfferings({
   groups = [],
 }) {
   if (!sessionId) {
-    throw new Error("Attendance session is required.");
+    throw createAppError("Attendance session is required.", 400, ERROR_CODES.INVALID_INPUT);
   }
 
   if (!Array.isArray(groups) || groups.length === 0) {
-    throw new Error(
-      "At least one offering group is required."
+    throw createAppError(
+      "At least one offering group is required.",
+      400,
+      ERROR_CODES.INVALID_INPUT
     );
   }
 
@@ -29,8 +33,10 @@ export async function createOfferings({
   );
 
   if (!session) {
-    throw new Error(
-      "Attendance session not found."
+    throw createAppError(
+      "Attendance session not found.",
+      404,
+      ERROR_CODES.NOT_FOUND
     );
   }
 
@@ -46,8 +52,10 @@ export async function createOfferings({
     );
 
   if (existing.length > 0) {
-    throw new Error(
-      "Offerings have already been recorded for this session."
+    throw createAppError(
+      "Offerings have already been recorded for this session.",
+      409,
+      ERROR_CODES.CONFLICT
     );
   }
 
@@ -58,8 +66,10 @@ export async function createOfferings({
 
     for (const group of groups) {
       if (!group.groupName) {
-        throw new Error(
-          "Group name is required."
+        throw createAppError(
+          "Group name is required.",
+          400,
+          ERROR_CODES.INVALID_INPUT
         );
       }
 
