@@ -11,15 +11,15 @@ export async function createChurch({
   conferenceId,
 }) {
   if (!profileId) {
-    throw createAppError("User is required.", 400, ERROR_CODES.INVALID_CREDENTIALS);
+    throw createAppError("Failed to resolve user", 500, ERROR_CODES.INTERNAL_SERVER_ERROR);
   }
 
   if (!churchName?.trim()) {
-    throw createAppError("Church name is required.", 400, ERROR_CODES.INVALID_CREDENTIALS);
+    throw createAppError("Church name is required.", 400, ERROR_CODES.VALIDATION_ERROR);
   }
 
   if (!conferenceId) {
-    throw createAppError("Conference is required.", 400, ERROR_CODES.INVALID_INPUT);
+    throw createAppError("Conference is required.", 400, ERROR_CODES.VALIDATION_ERROR);
   }
 
   const client = await pool.connect();

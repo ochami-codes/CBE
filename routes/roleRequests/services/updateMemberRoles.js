@@ -10,7 +10,7 @@ export async function updateMemberRoles({
   roles,
 }) {
   if (!memberId) {
-    throw createAppError("Member is required.", 400, ERROR_CODES.INVALID_CREDENTIALS);
+    throw createAppError("Member is required.", 400, ERROR_CODES.VALIDATION_ERROR);
   }
 
   if (!churchId) {
@@ -18,7 +18,7 @@ export async function updateMemberRoles({
   }
 
   if (!actorMemberId) {
-    throw createAppError("Authenticated member is required.", 500, ERROR_CODES.INTERNAL_SERVER_ERROR);
+    throw createAppError("Failed to resolve active church.", 500, ERROR_CODES.INTERNAL_SERVER_ERROR);
   }
 
   if (!Array.isArray(roles) || !roles.length) {

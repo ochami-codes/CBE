@@ -1,7 +1,7 @@
 import { pool } from "../../../db.js";
 import { createAppError } from "../../../errors/AppError.js";
 import { ERROR_CODES } from "../../../errors/errorCodes.js";
-
+import { notifyRoles } from "../../../services/notifications/notifyRoles.js";
 export async function approveSource({
   transferId,
   processedBy,
@@ -126,6 +126,20 @@ export async function approveSource({
       `,
       [transferId, notes || "External transfer completed", processedBy]
     );
+ /* =========================
+     NOTIFY DESTINATION CHURCH
+  ========================= */
+  await notifyRoles({
+    client,
+    churchId: transfer.destination_church_id,
+    roles: ["admin", "clerk"],
+    type: "transfer_pending",
+    title: "Member Transfer Pending",
+    message:
+      "A member transfer has been approved by the source church and is awaiting your review.",
+    relatedId: transferId,
+    relatedType: "transfer",
+  });
 
     await client.query("COMMIT");
 

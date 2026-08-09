@@ -4,6 +4,8 @@ import { getConferences } from "./services/getConferences.js";
 import { updateConference } from "./services/updateConference.js";
 import { createDepartment } from "./services/createDepartment.js";
 import { getDepartments } from "./services/getDepartments.js";
+import { activateDepartment } from "./services/activateDepartment.js";
+import { deactivateDepartment } from "./services/deactivateDepartment.js";
 import { getFrontendRoles } from "./services/frontendRoles.js";
 import { createChurch } from "./services/createChurch.js";
 import { switchActiveChurch } from "./services/switchChurch.js";
@@ -17,5 +19,7 @@ export const ReusableService = {
     updateConference,
     createDepartment,
     getDepartments,
+    activateDepartment,
+    deactivateDepartment,
     getFrontendRoles,
 }

@@ -1,5 +1,5 @@
 import { pool } from "../../../db.js";
-import { validateSendMessageInput } from "../../../validators/messages/messageValidator.js";
+import { validateSendMessageInput } from "../../../utils/validators/messages/messageValidator.js";
 
 export async function sendMessage({
   senderId,

@@ -1,7 +1,7 @@
 import { ERROR_CODES } from "../../../errors/errorCodes.js";
 import { supabaseAdmin } from "../../../supabaseClient.js";
 import { createAppError } from "../../../errors/AppError.js";
-import { validateResetPasswordInput } from "../../../validators/auth/resetPasswordValidator.js";
+import { validateResetPasswordInput } from "../../../utils/validators/auth/resetPasswordValidator.js";
 
 export async function resetPassword({
   email,

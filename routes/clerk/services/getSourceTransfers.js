@@ -1,5 +1,5 @@
-import { pool } from "../../../db.js";
-export async function getDestinationTransfersService(churchId) {
+import { pool } from "../../../db.js"
+export async function getSourceTransfers(churchId) {
   const result = await pool.query(
     `
     SELECT
@@ -9,17 +9,17 @@ export async function getDestinationTransfersService(churchId) {
       t.reason,
       t.created_at,
       t.transfer_type,
+      t.external_church_name,
 
       -- member info
       p.full_name AS member_name,
       p.phone,
 
-      -- source church
+      -- churches
       sc.id AS source_church_id,
       sc.name AS source_church_name,
       sc.church_code AS source_church_code,
 
-      -- destination church
       dc.id AS destination_church_id,
       dc.name AS destination_church_name,
       dc.church_code AS destination_church_code
@@ -38,8 +38,8 @@ export async function getDestinationTransfersService(churchId) {
     LEFT JOIN churches dc
       ON dc.id = t.destination_church_id
 
-    WHERE t.destination_church_id = $1
-      AND t.status = 'pending_destination'
+    WHERE t.source_church_id = $1
+      AND t.status = 'requested'
 
     ORDER BY t.created_at DESC
     `,

@@ -94,29 +94,6 @@ export async function approveDestination({
       ]
     );
 
-    /* =========================
-       NOTIFICATION (optional)
-    ========================= */
-    await client.query(
-      `
-      INSERT INTO notifications (
-        user_id,
-        church_id,
-        type,
-        title,
-        message
-      )
-      VALUES ($1, $2, $3, $4, $5)
-      `,
-      [
-        transfer.profile_id,
-        transfer.destination_church_id,
-        "transfer_completed",
-        "Transfer Completed",
-        "Your membership transfer has been successfully completed."
-      ]
-    );
-
     await client.query("COMMIT");
 
     return completed.rows[0];

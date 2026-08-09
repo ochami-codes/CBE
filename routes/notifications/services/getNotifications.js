@@ -11,11 +11,11 @@ export async function getNotifications({
   limit = 10,
 }) {
   if (!profileId) {
-    throw createAppError("User is required.", 400, ERROR_CODES.INVALID_CREDENTIALS);
+    throw createAppError("Failed to resolve user.", 500, ERROR_CODES.INTERNAL_SERVER_ERROR);
   }
 
   if (!churchId) {
-    throw createAppError("Church is required.", 400, ERROR_CODES.INVALID_CREDENTIALS);
+    throw createAppError("Failed to resolve church", 500, ERROR_CODES.INTERNAL_SERVER_ERROR);
   }
 
   const pageNumber = Math.max(Number(page) || 1, 1);

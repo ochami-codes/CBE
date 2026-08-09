@@ -202,10 +202,7 @@ export async function getFunds(req, res) {
           active !== "false",
 
       });
-
-
-
-    return res.status(200).json({
+return res.status(200).json({
 
       success: true,
 
@@ -233,10 +230,6 @@ export async function getFunds(req, res) {
 
   }
 }
-
-
-
-
 export async function getFundsSummary(
   req,
   res

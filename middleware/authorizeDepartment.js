@@ -1,9 +1,10 @@
 import { pool } from "../db.js";
-import { getRolePermissions } from "../config/roles.js";
+import {
+  getRolePermissions,
+  hasRole,
+} from "../config/roles.js";
 
-export function authorizeDepartment(
-  permission = null
-) {
+export function authorizeDepartment(permission = null) {
   return async (req, res, next) => {
     try {
       const memberId =
@@ -16,59 +17,124 @@ export function authorizeDepartment(
         activeChurch?.id ??
         req.user?.active_church_id;
 
-      const { departmentId } =
-        req.params;
+      const departmentId =
+        req.params?.departmentId ??
+        req.query?.departmentId;
 
-      /* --------------------------------
+      /* -------------------------
          AUTHENTICATION
-      -------------------------------- */
+      ------------------------- */
 
       if (!memberId) {
         return res.status(401).json({
-          message:
-            "Authentication required.",
+          message: "Authentication required.",
         });
       }
 
-      /* --------------------------------
+      /* -------------------------
          ACTIVE CHURCH
-      -------------------------------- */
+      ------------------------- */
 
       if (!activeChurchId) {
         return res.status(403).json({
-          message:
-            "No active church context.",
+          message: "No active church context.",
         });
       }
 
-      /* --------------------------------
+      /* -------------------------
          DEPARTMENT ID
-      -------------------------------- */
+      ------------------------- */
 
       if (!departmentId) {
         return res.status(400).json({
-          message:
-            "Department ID is required.",
+          message: "Department ID is required.",
         });
       }
 
-      /* --------------------------------
-         ADMIN BYPASS
-      -------------------------------- */
+      /* -------------------------
+         CHURCH ADMIN
+      ------------------------- */
+     if (
+  hasRole(
+    activeChurch?.roles ?? [],
+    "admin"
+  )
+) {
+  return next();
+}
+
+      /* -------------------------
+         CHURCH-LEVEL PERMISSION
+      ------------------------- */
 
       if (
-        activeChurch?.roles?.includes(
-          "admin"
+        permission &&
+        activeChurch?.permissions?.includes(
+          permission
         )
       ) {
         return next();
       }
 
-      /* --------------------------------
-         CHECK DEPARTMENT ROLE
-      -------------------------------- */
+      /* -------------------------
+         GET DEPARTMENT MANAGER ROLE
+      ------------------------- */
 
-      const { rows } =
+      const departmentResult =
+        await pool.query(
+          `
+          SELECT
+            d.id,
+            d.manager_role_id,
+            r.name AS manager_role
+          FROM departments d
+
+          LEFT JOIN roles r
+            ON r.id = d.manager_role_id
+
+          WHERE
+            d.id = $1
+            AND d.church_id = $2
+            AND d.is_active = true
+
+          LIMIT 1
+          `,
+          [
+            departmentId,
+            activeChurchId,
+          ]
+        );
+
+      /* -------------------------
+         DEPARTMENT NOT FOUND
+      ------------------------- */
+
+      if (!departmentResult.rowCount) {
+        return res.status(404).json({
+          message:
+            "Department not found.",
+        });
+      }
+
+      const department =
+        departmentResult.rows[0];
+
+      /* -------------------------
+         NO MANAGER ROLE
+      ------------------------- */
+
+      if (!department.manager_role_id) {
+        return res.status(403).json({
+          message:
+            "This department does not have a manager role assigned.",
+        });
+      }
+
+      /* -------------------------
+         CHECK MEMBER ROLE
+      ------------------------- */
+
+      const roleResult =
         await pool.query(
           `
           SELECT
@@ -81,49 +147,42 @@ export function authorizeDepartment(
 
           WHERE
             mr.member_id = $1
-            AND mr.department_id = $2
+            AND mr.role_id = $2
 
-          LIMIT 1;
+          LIMIT 1
           `,
           [
             memberId,
-            departmentId,
+            department.manager_role_id,
           ]
         );
 
-      /* --------------------------------
-         USER NOT IN DEPARTMENT
-      -------------------------------- */
-
-      if (!rows.length) {
+      if (!roleResult.rowCount) {
         return res.status(403).json({
           message:
-            "You do not have access to this department.",
+            "You are not authorized to manage this department.",
         });
       }
 
-      /* --------------------------------
-         READ ACCESS ONLY
-      -------------------------------- */
+      /* -------------------------
+         NO SPECIFIC PERMISSION
+      ------------------------- */
 
       if (!permission) {
         return next();
       }
 
-      /* --------------------------------
-         CHECK DEPARTMENT PERMISSION
-      -------------------------------- */
+      /* -------------------------
+         ROLE PERMISSIONS
+      ------------------------- */
+
+      const role =
+        roleResult.rows[0].role;
 
       const permissions =
-        getRolePermissions(
-          rows[0].role
-        );
+        getRolePermissions(role);
 
-      if (
-        !permissions.includes(
-          permission
-        )
-      ) {
+      if (!permissions.includes(permission)) {
         return res.status(403).json({
           message:
             "You are not authorized to perform this action.",

@@ -1,6 +1,6 @@
 import { supabaseAuth } from "../../../supabaseClient.js";
 
-import { validateResetPasswordInput } from "../../../validators/auth/resetPasswordValidator.js";
+import { validateResetPasswordInput } from "../../../utils/validators/auth/resetPasswordValidator.js";
 
 export async function resendVerification({
   email,

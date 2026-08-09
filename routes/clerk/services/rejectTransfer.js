@@ -1,4 +1,7 @@
 import { pool } from "../../../db.js";
+import { createAppError } from "../../../errors/AppError.js";
+import { ERROR_CODES } from "../../../errors/errorCodes.js";
+import { notifyUser } from "../../../services/notifications/notifyUser.js";
 
 export async function rejectTransfer({
   transferId,
@@ -27,7 +30,11 @@ export async function rejectTransfer({
     const transfer = result.rows[0];
 
     if (!transfer) {
-      throw new Error("Transfer not found");
+      throw createAppError(
+        "Transfer not found",
+        404,
+        ERROR_CODES.NOT_FOUND
+      );
     }
 
     /* =========================
@@ -57,8 +64,7 @@ export async function rejectTransfer({
         : "Your transfer request was rejected by the source church.";
 
       notifyChurchId = transfer.source_church_id;
-    } 
-    else if (transfer.status === "pending_destination") {
+    } else if (transfer.status === "pending_destination") {
       action = "destination_rejected";
 
       updateQuery = `
@@ -77,9 +83,8 @@ export async function rejectTransfer({
         : "Your transfer was rejected by the destination church.";
 
       notifyChurchId = transfer.destination_church_id;
-    } 
-    else {
-      throw new Error(
+    } else {
+      throw createAppError(
         `Cannot reject a ${transfer.status} transfer`
       );
     }
@@ -111,25 +116,16 @@ export async function rejectTransfer({
     /* =========================
        NOTIFICATION
     ========================= */
-    await client.query(
-      `
-      INSERT INTO notifications (
-        user_id,
-        church_id,
-        type,
-        title,
-        message
-      )
-      VALUES ($1, $2, $3, $4, $5)
-      `,
-      [
-        transfer.profile_id,
-        notifyChurchId,
-        "transfer_rejected",
-        "Transfer Rejected",
-        notificationMessage,
-      ]
-    );
+    await notifyUser({
+      client,
+      userId: transfer.profile_id,
+      churchId: notifyChurchId,
+      type: "transfer_rejected",
+      title: "Transfer Rejected",
+      message: notificationMessage,
+      relatedId: transferId,
+      relatedType: "transfer",
+    });
 
     await client.query("COMMIT");
 

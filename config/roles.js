@@ -39,8 +39,8 @@ export const ROLES = {
     label: "Communication Leader",
   },
 
-  choir_leader: {
-    label: "Choir Leader",
+  music_leader: {
+    label: "Music Leader",
   },
 
   amo_leader: {
@@ -104,33 +104,39 @@ export const ROLE_PERMISSIONS = {
   treasurer: [
     "access_treasury_dashboard",
     "manage_finances",
+    "view_dept_finances"
   ],
 
   youth_leader: [
     "access_youth_dashboard",
     "manage_youth",
     "manage_dept_announcements",
+    "view_dept_finances"
   ],
 
   children_leader: [
     "access_children_dashboard",
     "manage_children",
+    "view_dept_finances"
   ],
 
   communication_leader: [
     "access_media_dashboard",
     "manage_media",
+    "view_dept_finances"
   ],
 
-  choir_leader: [
+  music_leader: [
     "access_choir_dashboard",
     "manage_choir",
     "manage_dept_announcements",
+    "view_dept_finances"
   ],
 
   s_school_leader: [
     "access_s_school_dashboard",
     "manage_s_school",
+    "view_dept_finances"
   ],
 
   clerk: [
@@ -142,18 +148,21 @@ export const ROLE_PERMISSIONS = {
     "access_amo_dashboard",
     "manage_amo",
     "manage_dept_announcements",
+    "view_dept_finances"
   ],
 
   alo_leader: [
     "access_alo_dashboard",
     "manage_alo",
     "manage_dept_announcements",
+    "view_dept_finances"
   ],
 
   deaconry_leader: [
     "access_deaconry_dashboard",
     "manage_deaconry",
     "manage_dept_announcements",
+    "view_dept_finances"
   ],
 };
 
@@ -175,12 +184,18 @@ export const REQUESTABLE_ROLES =
    Normalization
 -------------------------------- */
 
-export const normalizeRole = (
-  role
-) =>
-  role
+export const normalizeRole = (role) => {
+  if (!role) return null;
+
+  const roleName =
+    typeof role === "string"
+      ? role
+      : role.name;
+
+  return roleName
     ?.toLowerCase()
-    .trim();
+    .trim() ?? null;
+};
 
 /* --------------------------------
    Role Permissions

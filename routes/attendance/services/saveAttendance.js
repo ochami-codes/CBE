@@ -1,4 +1,19 @@
 import { pool } from "../../../db.js";
+import { createAppError } from "../../../errors/AppError.js";
+import { ERROR_CODES } from "../../../errors/errorCodes.js";
+
+const VALID_STATUSES = [
+  "present",
+  "absent",
+];
+
+const VALID_SERVICE_TYPES = [
+  "sabbath_school",
+  "divine_service",
+  "vespers",
+  "midweek",
+  "other",
+];
 
 export async function saveAttendance({
   churchId,
@@ -14,6 +29,126 @@ export async function saveAttendance({
 
   records = [],
 }) {
+  if (!churchId) {
+    throw createAppError(
+      "Church is required.",
+      400,
+      ERROR_CODES.VALIDATION_ERROR
+    );
+  }
+
+  if (!departmentId) {
+    throw createAppError(
+      "Department is required.",
+      400,
+      ERROR_CODES.VALIDATION_ERROR
+    );
+  }
+
+  if (!attendanceDate) {
+    throw createAppError(
+      "Attendance date is required.",
+      400,
+      ERROR_CODES.VALIDATION_ERROR
+    );
+  }
+
+  if (!recordedBy) {
+    throw createAppError(
+      "Recorded by is required.",
+      400,
+      ERROR_CODES.VALIDATION_ERROR
+    );
+  }
+
+  if (
+    serviceType &&
+    !VALID_SERVICE_TYPES.includes(serviceType)
+  ) {
+    throw createAppError(
+      "Invalid service type.",
+      400,
+      ERROR_CODES.VALIDATION_ERROR
+    );
+  }
+
+  if (
+    title &&
+    title.trim().length > 255
+  ) {
+    throw createAppError(
+      "Title cannot exceed 255 characters.",
+      400,
+      ERROR_CODES.VALIDATION_ERROR
+    );
+  }
+
+  const counts = [
+    ["memberCount", memberCount],
+    ["childCount", childCount],
+    ["youthCount", youthCount],
+  ];
+
+  for (const [name, value] of counts) {
+    if (
+      !Number.isInteger(value) ||
+      value < 0
+    ) {
+      throw createAppError(
+        `${name} must be a non-negative integer.`,
+        400,
+        ERROR_CODES.VALIDATION_ERROR
+      );
+    }
+  }
+
+  if (!Array.isArray(records)) {
+    throw createAppError(
+      "Attendance records must be an array.",
+      400,
+      ERROR_CODES.VALIDATION_ERROR
+    );
+  }
+
+  const seen = new Set();
+
+  for (const [index, record] of records.entries()) {
+    const hasMember = !!record.memberId;
+    const hasChild = !!record.childId;
+
+    if (hasMember === hasChild) {
+      throw createAppError(
+        `Attendance record ${index + 1} must contain either a member or a child.`,
+        400,
+        ERROR_CODES.VALIDATION_ERROR
+      );
+    }
+
+    if (
+      !VALID_STATUSES.includes(record.status)
+    ) {
+      throw createAppError(
+        `Invalid attendance status in record ${index + 1}.`,
+        400,
+        ERROR_CODES.VALIDATION_ERROR
+      );
+    }
+
+    const key = hasMember
+      ? `member:${record.memberId}`
+      : `child:${record.childId}`;
+
+    if (seen.has(key)) {
+      throw createAppError(
+        "Duplicate attendance record detected.",
+        400,
+        ERROR_CODES.VALIDATION_ERROR
+      );
+    }
+
+    seen.add(key);
+  }
+
   const client = await pool.connect();
 
   try {
@@ -51,7 +186,6 @@ export async function saveAttendance({
       await client.query(
         `
         UPDATE attendance_sessions
-
         SET
           title = $2,
           service_type = $3,
@@ -60,7 +194,6 @@ export async function saveAttendance({
           child_count = $6,
           youth_count = $7,
           updated_at = NOW()
-
         WHERE id = $1
         `,
         [
@@ -87,7 +220,6 @@ export async function saveAttendance({
           child_count,
           youth_count
         )
-
         VALUES (
           $1,
           $2,
@@ -99,7 +231,6 @@ export async function saveAttendance({
           $8,
           $9
         )
-
         RETURNING id
         `,
         [
@@ -129,7 +260,6 @@ export async function saveAttendance({
             status,
             remarks
           )
-
           VALUES (
             $1,
             $2,
@@ -160,11 +290,9 @@ export async function saveAttendance({
         youthCount,
       },
     };
-
   } catch (error) {
     await client.query("ROLLBACK");
     throw error;
-
   } finally {
     client.release();
   }

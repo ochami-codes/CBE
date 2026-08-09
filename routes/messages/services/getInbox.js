@@ -7,11 +7,11 @@ export async function getInbox({
   churchId,
 }) {
   if (!profileId) {
-    throw createAppError("User is required.", 401, ERROR_CODES.AUTHENTICATION_REQUIRED);
+    throw createAppError("Failed to resolve user", 500, ERROR_CODES.INTERNAL_SERVER_ERROR);
   }
 
   if (!churchId) {
-    throw createAppError("No active church selected.", 400, ERROR_CODES.INVALID_CREDENTIALS);
+    throw createAppError("Failed to resolve church context.", 500, ERROR_CODES.INTERNAL_SERVER_ERROR);
   }
 
   const { rows } = await pool.query(

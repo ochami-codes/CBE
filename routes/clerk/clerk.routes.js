@@ -1,57 +1,43 @@
 import express from "express";
-import {
-  getMembers,
-   getSourceTransfers,
-   getDestinationTransfers,
-   getTransferHistory,
-  createTransfer,
-  addMember,
-  updateMember,
-  getChildren,
-   addChild,
-   updateChild,
-  searchParents,
-  getClerkOverview,
-  approveTransferController,
-   rejectTransferController,
-   getSummaryReport,
-} from "./clerk.controller.js";
+import { ClerkController } from "./clerk.controller.js";
 import { authorize } from "../../middleware/authorize.js";
 const router = express.Router();
 
 /* -------------------------
    MEMBERS (system + non-system)
 -------------------------- */
-router.get("/members", getMembers);
-router.post("/add-member",authorize("manage_records"), addMember);
-router.patch("/members/:id", authorize("manage_records"), updateMember);
+router.get("/members", ClerkController.getMembers);
+router.post("/add-member",authorize("manage_records"), ClerkController.addMember);
+router.patch("/members/:memberId", authorize("manage_records"), ClerkController.updateMember);
 /* -------------------------
    CHILDREN REGISTER
 -------------------------- */
-router.get("/children", getChildren);
-router.post("/add-child", authorize("manage_records"), addChild);
-router.get("/search-parents", searchParents);
-router.patch("/children/:id", authorize("manage_records"), updateChild);
+router.get("/children", ClerkController.getChildren);
+router.post("/add-child", authorize("manage_records"), ClerkController.addChild);
+router.get("/search-parents", ClerkController.searchParentMembers);
+router.patch("/children/:childId", authorize("manage_records"), ClerkController.updateChild);
 /* -------------------------
    TRANSFERS
 -------------------------- */
 
-router.get("/transfers/source", authorize("manage_records"), getSourceTransfers);
+router.get("/transfers/source", authorize("manage_records"), ClerkController.getSourceTransfers);
 
-router.get("/transfers/destination", authorize("manage_records"), getDestinationTransfers);
+router.get("/transfers/destination", authorize("manage_records"), ClerkController.getDestinationTransfers);
 
-router.get("/transfers/history", authorize("manage_records"), getTransferHistory);
+router.get("/transfers/history", authorize("manage_records"), ClerkController.getTransferHistory);
 
-router.post("/transfers/create", createTransfer);
+router.post("/transfers/create", ClerkController.createTransferRequest);
+router.post("/transfers/clerk/create", authorize("manage_records"), ClerkController.createClerkTransfer);
+router.post("/transfers/source/:id/approve", authorize("manage_records"), ClerkController.approveSourceTransfer);
 
-router.post("/transfers/:id/approve", authorize("manage_records"), approveTransferController);
+router.post("/transfers/destination/:id/approve", authorize("manage_records"), ClerkController.approveDestinationTransfer);
 
-router.post("/transfers/:id/reject", authorize("manage_records"), rejectTransferController);
+router.post("/transfers/:id/reject", authorize("manage_records"), ClerkController.rejectTransfer);
 
-router.get("/overview", authorize("manage_records"), getClerkOverview);
+router.get("/overview", authorize("manage_records"), ClerkController.getClerkOverview);
 
 /* -------------------------
    REPORTS
 -------------------------- */
-router.get("/reports/summary",authorize("manage_records"), getSummaryReport);
+//router.get("/reports/summary",authorize("manage_records"), ClerkController.getSummaryReport);
 export default router;

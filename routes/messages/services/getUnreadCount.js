@@ -7,11 +7,11 @@ export async function getUnreadCount({
   profileId,
 }) {
   if (!churchId) {
-    throw createAppError("Church is required.", 400, ERROR_CODES.INVALID_CREDENTIALS);
+    throw createAppError("Failed to resolve church context", 500, ERROR_CODES.INTERNAL_SERVER_ERROR);
   }
 
   if (!profileId) {
-    throw createAppError("User is required.", 400, ERROR_CODES.INVALID_CREDENTIALS);
+    throw createAppError("Failed to resolve user.", 500, ERROR_CODES.INTERNAL_SERVER_ERROR);
   }
 
   const { rows } = await pool.query(

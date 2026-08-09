@@ -1,23 +1,78 @@
-// services/auth.service.js
+import {
+  supabaseAuth,
+  supabaseAdmin,
+} from "../../../supabaseClient.js";
 
-import { supabaseAuth, supabaseAdmin } from "../../../supabaseClient.js";
-import { validateLoginInput } from "../../../validators/auth/loginValidator.js";
-import { createAppError } from "../../../errors/AppError.js";
-import { ERROR_CODES } from "../../../errors/errorCodes.js";
-export async function login({email, password}) {
-  validateLoginInput({email, password});
+import {
+  validateLoginInput,
+} from "../../../utils/validators/auth/loginValidator.js";
 
-  const { data, error } =
+import {
+  mapSupabaseAuthError,
+  mapSupabaseDatabaseError,
+} from "../../../errors/supabaseError.js";
+
+import {
+  createAppError,
+} from "../../../errors/AppError.js";
+
+import {
+  ERROR_CODES,
+} from "../../../errors/errorCodes.js";
+
+export async function login({
+  email,
+  password,
+}) {
+  /* -----------------------------
+     Validate Input
+  ------------------------------ */
+
+  validateLoginInput({
+    email,
+    password,
+  });
+
+  /* -----------------------------
+     Authenticate
+  ------------------------------ */
+
+  const {
+    data,
+    error,
+  } =
     await supabaseAuth.auth.signInWithPassword({
       email,
       password,
     });
 
-  if (error || !data?.user || !data?.session) {
-    throw createAppError("Invalid email or password.", 400, ERROR_CODES.INVALID_CREDENTIALS );
+  if (error) {
+    throw mapSupabaseAuthError(error);
   }
 
-  const { user, session } = data;
+  /* -----------------------------
+     Validate Auth Response
+  ------------------------------ */
+
+  if (
+    !data?.user ||
+    !data?.session
+  ) {
+    throw createAppError(
+      "Authentication service returned an invalid response.",
+      502,
+      ERROR_CODES.EXTERNAL_SERVICE_ERROR
+    );
+  }
+
+  const {
+    user,
+    session,
+  } = data;
+
+  /* -----------------------------
+     Email Confirmation
+  ------------------------------ */
 
   if (!user.email_confirmed_at) {
     throw createAppError(
@@ -27,28 +82,66 @@ export async function login({email, password}) {
     );
   }
 
+  /* -----------------------------
+     Fetch Profile
+  ------------------------------ */
+
   const {
     data: profile,
     error: profileError,
-  } = await supabaseAdmin
-    .from("profiles")
-    .select(`
-      id,
-      auth_user_id,
-      full_name,
-      email,
-      active_church_id
-    `)
-    .eq("auth_user_id", user.id)
-    .single();
+  } =
+    await supabaseAdmin
+      .from("profiles")
+      .select(`
+        id,
+        auth_user_id,
+        full_name,
+        email,
+        active_church_id
+      `)
+      .eq("auth_user_id", user.id)
+      .single();
 
-  if (profileError || !profile) {
-    throw createAppError("Profile not found.", 404, ERROR_CODES.NOT_FOUND );
+  if (profileError) {
+    /*
+     * PGRST116 is handled here because
+     * "not found" has domain-specific
+     * meaning for the profile.
+     */
+    if (
+      profileError.code === "PGRST116"
+    ) {
+      throw createAppError(
+        "Profile not found.",
+        404,
+        ERROR_CODES.PROFILE_NOT_FOUND
+      );
+    }
+
+    throw mapSupabaseDatabaseError(
+      profileError
+    );
   }
 
+  if (!profile) {
+    throw createAppError(
+      "Profile not found.",
+      404,
+      ERROR_CODES.PROFILE_NOT_FOUND
+    );
+  }
+
+  /* -----------------------------
+     Success
+  ------------------------------ */
+
   return {
-    access_token: session.access_token,
-    refresh_token: session.refresh_token,
+    access_token:
+      session.access_token,
+
+    refresh_token:
+      session.refresh_token,
+
     user: profile,
   };
 }

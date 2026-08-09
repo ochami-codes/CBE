@@ -2,7 +2,7 @@ import { pool } from "../../../db.js";
 import {
   normalizeKenyanPhone,
   isValidKenyanPhone,
-} from "../../../utils/phone.js";
+} from "../../../utils/validators/phone.js";
 import  { toNameCase } from "../../../utils/formatters.js";
 import { createAppError } from "../../../errors/AppError.js";
 import { ERROR_CODES } from "../../../errors/errorCodes.js";

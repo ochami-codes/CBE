@@ -9,11 +9,11 @@ export async function switchActiveChurch({
   churchId,
 }) {
   if (!profileId) {
-    throw createAppError("User is required.", 400, ERROR_CODES.INVALID_CREDENTIALS);
+    throw createAppError("Failed to resolve user.", 500, ERROR_CODES.INTERNAL_SERVER_ERROR);
   }
 
   if (!churchId) {
-    throw createAppError("Church is required.", 400, ERROR_CODES.INVALID_CREDENTIALS);
+    throw createAppError("Church is required.", 400, ERROR_CODES.VALIDATION_ERROR);
   }
 
   // Ensure the church exists

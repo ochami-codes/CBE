@@ -13,11 +13,11 @@ export async function notifyUser({
   relatedType = null,
 }) {
   if (!userId) {
-    throw createAppError("userId is required.", 400, ERROR_CODES.INVALID_CREDENTIALS);
+    throw createAppError("Failed to resolve user.", 500, ERROR_CODES.INTERNAL_SERVER_ERROR);
   }
 
   if (!churchId) {
-    throw createAppError("churchId is required.", 500, ERROR_CODES.INTERNAL_SERVER_ERROR);
+    throw createAppError("Failed to resolve church", 500, ERROR_CODES.INTERNAL_SERVER_ERROR);
   }
 
   const db = client ?? pool;

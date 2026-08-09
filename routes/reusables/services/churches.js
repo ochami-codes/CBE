@@ -82,7 +82,7 @@ export async function getChurches({
 
 export async function getChurch(churchId) {
   if (!churchId) {
-    throw createAppError("Church is required.", 400, ERROR_CODES.INVALID_CREDENTIALS);
+    throw createAppError("Church is required.", 400, ERROR_CODES.VALIDATION_ERROR);
   }
 
   const { rows } = await pool.query(

@@ -1,465 +1,206 @@
+import { ClerkService } from "./clerk.service.js";
+
 import {
-  fetchMembers,
-  fetchChildren,
-  fetchTransfers,
-  createTransferRequest,
-  fetchClerkOverview,
-  addMemberService,
-  updateMemberService,
-  addChildService,
-  updateChildService,
-  searchParentMembers,
-  getSummaryReportService,
-} from "./clerk.service.js";
-import { getSourceTransfersService } from "./services/getSourceTransfer.js";
-import { getDestinationTransfersService } from "./services/getDestinationTransfer.js";
-import { getTransferHistoryService } from "./services/getTransferHistory.js";
-import { approveSource } from "./services/approveSource.js";
-import { approveDestination } from "./services/approveDestination.js";
-import { rejectTransfer } from "./services/rejectTransfer.js";
-import { generateReportPDF } from "./services/reports/generateReportPDF.js";
-import { buildSummaryReportHTML } from "./services/reports/buildSummaryReportHTML.js";
-import { pool } from "../../db.js";
+  getHandler,
+  createHandler,
+  updateHandler,
+} from "../../utils/controller.js";
 
-/* -------------------------
-   MEMBERS
--------------------------- */
-export async function getMembers(req, res) {
-  try {
+export const ClerkController = {
+  /* =========================
+     MEMBERS
+  ========================== */
 
-    const data = await fetchMembers(req.user.active_church_id);
+  getMembers: getHandler((req) =>
+    ClerkService.fetchMembers(
+      req.user.active_church_id
+    )
+  ),
 
-    res.json(data);
-  } catch (err) {
-    console.error("❌ getMembers error:");
-    console.error("MESSAGE:", err.message);
-    console.error("STACK:", err.stack);
-
-    res.status(500).json({ message: "Failed to fetch members" });
-  }
-}
-export async function addMember(req, res) {
-  try {
-
-    const churchId = req.user.active_church_id;
-
-    const data = await addMemberService({
-      churchId,
+  addMember: createHandler((req) =>
+    ClerkService.addMember({
+      churchId:
+        req.user.active_church_id,
       payload: req.body,
       createdBy: req.user.id,
-    });
+    })
+  ),
 
-    res.status(201).json(data);
-  } catch (err) {
-    console.error("❌ addMember error:");
-    console.error("MESSAGE:", err.message);
-    console.error("STACK:", err.stack);
-
-    res.status(500).json({
-      message: "Failed to add member",
-    });
-  }
-}
-
-export async function updateMember(req, res) {
-  try {
-
-    const { memberId } = req.params;
-    const churchId = req.user.active_church_id;
-
-    const {
-      profile,
-      member,
-      member_record,
-    } = req.body;
-
-    const data = await updateMemberService({
-      memberId,
-      churchId,
-      payload: {
-        profile,
-        member,
-        member_record,
-      },
+  updateMember: updateHandler((req) =>
+    ClerkService.updateMember({
+      churchId:
+        req.user.active_church_id,
+      memberId:
+        req.params.memberId,
+      payload: req.body,
       updatedBy: req.user.id,
-    });
+    })
+  ),
 
-    res.status(200).json(data);
-  } catch (err) {
-    console.error("❌ updateMember error:");
-    console.error("MESSAGE:", err.message);
-    console.error("STACK:", err.stack);
+  /* =========================
+     CHILDREN
+  ========================== */
 
-    res.status(500).json({
-      message: err.message || "Failed to update member",
-    });
-  }
-}
-/* -------------------------
-   CHILDREN
--------------------------- */
-export async function getChildren(req, res) {
-  try {
+  getChildren: getHandler((req) =>
+    ClerkService.fetchChildren(
+      req.user.active_church_id
+    )
+  ),
 
-    const data = await fetchChildren(req.user.active_church_id);
-
-    res.json(data);
-  } catch (err) {
-    console.error("❌ getChildren error:");
-    console.error("MESSAGE:", err.message);
-    console.error("STACK:", err.stack);
-
-    res.status(500).json({ message: "Failed to fetch children" });
-  }
-}
-
-export async function addChild(req, res) {
-  try {
-    const churchId = req.user.active_church_id;
-
-    const data = await addChildService({
-      churchId,
+  addChild: createHandler((req) =>
+    ClerkService.addChild({
+      churchId:
+        req.user.active_church_id,
       payload: req.body,
       createdBy: req.user.id,
-    });
+    })
+  ),
 
-    res.status(201).json(data);
-  } catch (err) {
-    console.error("❌ addChild error:");
-    console.error("MESSAGE:", err.message);
-    console.error("STACK:", err.stack);
-
-    res.status(500).json({
-      message: "Failed to add child",
-    });
-  }
-}
-export async function updateChild(req, res) {
-  try {
-    const { childId } = req.params;
-    const churchId = req.user.active_church_id;
-
-    const { parent_member_id, child } = req.body;
-
-    const data = await updateChildService({
-      childId,
-      churchId,
-      payload: {
-        parent_member_id,
-        child,
-      },
+  updateChild: updateHandler((req) =>
+    ClerkService.updateChild({
+      churchId:
+        req.user.active_church_id,
+      childId:
+        req.params.childId,
+      payload: req.body,
       updatedBy: req.user.id,
-    });
+    })
+  ),
 
-    res.status(200).json(data);
-  } catch (err) {
-    console.error("❌ updateChild error:");
-    console.error("MESSAGE:", err.message);
-    console.error("STACK:", err.stack);
+  /* =========================
+     PARENT SEARCH
+  ========================== */
 
-    res.status(500).json({
-      message: err.message || "Failed to update child",
-    });
-  }
-}
-export async function searchParents(req, res) {
-  try {
-    const churchId = req.user.active_church_id;
-    const query =
-  req.query.q ||
-  req.query.query ||
-  req.query.search;
+  searchParentMembers: getHandler((req) =>
+    ClerkService.searchParentMembers({
+      churchId:
+        req.user.active_church_id,
+      query:
+        req.query.q ||
+        req.query.query ||
+        req.query.search,
+    })
+  ),
 
-    const data = await searchParentMembers({
-      churchId,
-      query,
-    });
+  /* =========================
+     REPORTS
+  ========================== */
 
-    res.json(data);
-  } catch (err) {
-    console.error("❌ searchParents error:", err.message);
+  getSummaryReport: getHandler((req) =>
+    ClerkService.getSummaryReport({
+      churchId:
+        req.user.active_church_id,
+    })
+  ),
 
-    res.status(500).json({
-      message: "Failed to search parents",
-    });
-  }
-}
-/* -------------------------
-   TRANSFERS (LIST)
--------------------------- */
-export async function getSourceTransfers(req, res) {
-  try {
-    const churchId = req.user.active_church_id;
+  /* =========================
+     TRANSFERS
+  ========================== */
 
-    const transfers = await getSourceTransfersService(churchId);
+  approveTransfer: updateHandler((req) =>
+    ClerkService.approveTransfer({
+      churchId:
+        req.user.active_church_id,
+      transferId:
+        req.params.id,
+      approvedBy: req.user.id,
+    })
+  ),
 
-    res.json(transfers);
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-}
-export async function getDestinationTransfers(req, res) { 
-  try {
-    const churchId = req.user.active_church_id;
+  rejectTransfer: updateHandler((req) =>
+    ClerkService.rejectTransfer({
+      churchId:
+        req.user.active_church_id,
+      transferId:
+        req.params.id,
+      rejectedBy: req.user.id,
+    })
+  ),
 
-    const transfers = await getDestinationTransfersService(churchId);
+  getTransferHistory: getHandler((req) =>
+    ClerkService.getTransferHistory(
+      req.user.active_church_id
+    )
+  ),
 
-    res.json(transfers);
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-}
-export async function getTransferHistory(req, res) {
-  try {
-    const churchId = req.user.active_church_id;
+  createTransferRequest: createHandler((req) =>
+    ClerkService.createTransferRequest({
+      sourceChurchId:
+        req.user.active_church_id,
+      memberId: req.user.active_member_id,
+      profileId:  req.user.id,
+      destinationChurchId: req.body.destination_church_id,
+      externalChurchName: req.body.external_church_name,
+      conferenceId: req.body.conference_id,
+      reason: req.body.reason,
+      requestedBy: req.user.id,
+    })
+  ),
+  createClerkTransfer: createHandler((req) =>
+    ClerkService.createClerkTransfer({
+      sourceChurchId:
+        req.user.active_church_id,
+      memberId: req.body.member_id,
+      destinationChurchId: req.body.destination_church_id,
+      externalChurchName: req.body.external_church_name,
+      conferenceId: req.body.conference_id,
+      reason: req.body.reason,
+      processedBy: req.user.id,
+    })
+  ),
+  getSourceTransfers: getHandler((req) =>
+    ClerkService.getSourceTransfers(
+      req.user.active_church_id
+    )
+  ),
 
-    const transfers = await getTransferHistoryService(churchId);
-    res.json(transfers);
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-}
-export async function createTransfer(req, res) {
-  try {
-    const user = req.user;
+  getDestinationTransfers: getHandler((req) =>
+    ClerkService.getDestinationTransfers(
+      req.user.active_church_id
+    )
+  ),
 
-    const {
-      destination_church_id,
-      external_church_name,
-      conference_id,
-      reason,
-    } = req.body;
+  approveDestinationTransfer:
+    updateHandler((req) =>
+      ClerkService.approveDestination({
+        churchId:
+          req.user.active_church_id,
+        transferId:
+          req.params.id,
+        approvedBy:
+          req.user.id,
+      })
+    ),
 
-    /* =========================
-       1. DETERMINE DESTINATION TYPE
-    ========================== */
+  approveSourceTransfer:
+    updateHandler((req) =>
+      ClerkService.approveSource({
+        churchId:
+          req.user.active_church_id,
+        transferId:
+          req.params.id,
+        approvedBy:
+          req.user.id,
+      })
+    ),
 
-    const hasInternal = !!destination_church_id;
-    const hasExternal = !!external_church_name;
+  rejectTransfer: updateHandler((req) =>
+    ClerkService.rejectTransfer({
+      churchId:
+        req.user.active_church_id,
+      transferId:
+        req.params.id,
+      rejectedBy: req.user.id,
+    })
+  ),
 
-    if (hasInternal && hasExternal) {
-      throw new Error(
-        "Cannot specify both internal and external destination"
-      );
-    }
+  /* =========================
+     CLERK OVERVIEW
+  ========================== */
 
-    if (!hasInternal && !hasExternal) {
-      throw new Error("Destination is required");
-    }
-
-    const destinationType = hasInternal
-      ? "internal"
-      : "external";
-
-    /* =========================
-       2. VALIDATE EXTERNAL CONFERENCE
-    ========================== */
-
-    let externalConferenceId = null;
-
-    if (destinationType === "external") {
-      if (!conference_id) {
-        throw new Error(
-          "conference_id is required for external church transfers"
-        );
-      }
-
-      externalConferenceId = conference_id;
-    }
-
-    /* =========================
-       3. CALL SERVICE
-    ========================== */
-
-    const data = await createTransferRequest({
-      memberId: user.active_membership?.id,
-      profileId: user.id,
-      sourceChurchId: user.active_church_id,
-      destinationChurchId: destination_church_id,
-      externalChurchName: external_church_name,
-      conferenceId: externalConferenceId,
-      destinationType,
-      reason,
-      requestedBy: user.id,
-    });
-
-    res.status(201).json(data);
-  } catch (err) {
-    console.error("❌ createTransfer error:");
-    console.error("MESSAGE:", err.message);
-    console.error("STACK:", err.stack);
-
-    res.status(500).json({
-      message: "Failed to create transfer",
-    });
-  }
-}
-
-
-export async function getClerkOverview(req, res) {
-  try {
-    const churchId = req.user.active_church_id;
-
-    const data = await fetchClerkOverview(churchId);
-
-    res.json(data);
-  } catch (err) {
-    console.error("❌ getClerkOverview error:");
-    console.error("MESSAGE:", err.message);
-    console.error("STACK:", err.stack);
-
-    res.status(500).json({
-      message: "Failed to fetch clerk overview",
-    });
-  }
-}
-
-export async function approveTransferController(req, res) {
-  try {
-    const transferId = req.params.id;
-    const processedBy = req.user.profileId;
-    const notes = req.body.notes;
-
-    /* =========================
-       LOAD TRANSFER FIRST
-    ========================= */
-    const result = await pool.query(
-      `
-      SELECT id, status
-      FROM transfers
-      WHERE id = $1
-      `,
-      [transferId]
-    );
-
-    const transfer = result.rows[0];
-
-    if (!transfer) {
-      return res.status(404).json({
-        success: false,
-        message: "Transfer not found",
-      });
-    }
-
-    let updatedTransfer;
-
-    /* =========================
-       ROUTE BY STATUS
-    ========================= */
-    if (transfer.status === "requested") {
-      updatedTransfer = await approveSource({
-        transferId,
-        processedBy,
-        notes,
-      });
-    } 
-    else if (transfer.status === "pending_destination") {
-      updatedTransfer = await approveDestination({
-        transferId,
-        processedBy,
-        notes,
-      });
-    } 
-    else {
-      return res.status(400).json({
-        success: false,
-        message: `Cannot approve a ${transfer.status} transfer`,
-      });
-    }
-
-    return res.status(200).json({
-      success: true,
-      transfer: updatedTransfer,
-    });
-
-  } catch (error) {
-    return res.status(500).json({
-      success: false,
-      message: error.message,
-    });
-  }
-}
-export async function rejectTransferController(
-  req,
-  res
-) {
-  try {
-    const transfer =
-      await rejectTransfer({
-        transferId: req.params.id,
-        processedBy: req.user.id,
-        notes: req.body.notes,
-      });
-
-    return res.status(200).json({
-      success: true,
-      transfer,
-    });
-  } catch (error) {
-    return res.status(400).json({
-      success: false,
-      message: error.message,
-    });
-  }
-}
-export async function getSummaryReport(req, res) {
-  try {
-    const churchId = req.user.active_church_id;
-
-    const {
-      period = "monthly",
-      year,
-      month,
-      quarter,
-      format = "json", // 👈 NEW
-    } = req.query;
-
-    const data = await getSummaryReportService({
-      churchId,
-      period,
-      year: Number(year),
-      month: month !== undefined ? Number(month) : undefined,
-      quarter: quarter !== undefined ? Number(quarter) : undefined,
-    });
-
-    /* =========================
-       RETURN JSON (default)
-    ========================== */
-    if (format === "json") {
-      return res.json(data);
-    }
-
-    /* =========================
-       RETURN PDF
-    ========================== */
-    if (format === "pdf") {
-      const html = buildSummaryReportHTML(data, {
-        period,
-        year,
-        month,
-        quarter,
-      });
-
-      const pdfBuffer = await generateReportPDF(html);
-      res.setHeader("Content-Type", "application/pdf");
-      res.setHeader(
-        "Content-Disposition",
-        `attachment; filename=church-report-${period}-${year}.pdf`
-      );
-
-      return res.send(pdfBuffer);
-    }
-
-    return res.status(400).json({
-      message: "Invalid format. Use json or pdf.",
-    });
-  } catch (err) {
-    console.error("❌ getSummaryReport error:");
-    console.error("MESSAGE:", err.message);
-    console.error("STACK:", err.stack);
-
-    res.status(500).json({
-      message: "Failed to generate summary report",
-    });
-  }
-}
+  getClerkOverview: getHandler((req) =>
+    ClerkService.fetchClerkOverview(
+      req.user.active_church_id
+    )
+  ),
+};

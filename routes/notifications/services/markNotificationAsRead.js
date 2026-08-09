@@ -8,15 +8,15 @@ export async function markNotificationAsRead({
   churchId,
 }) {
   if (!notificationId) {
-    throw createAppError("Notification is required.", 400, ERROR_CODES.INVALID_INPUT);
+    throw createAppError("Notification is required.", 400, ERROR_CODES.VALIDATION_ERROR);
   }
 
   if (!profileId) {
-    throw createAppError("User is required.", 400, ERROR_CODES.INVALID_CREDENTIALS);
+    throw createAppError("Failed to resolve user.", 500, ERROR_CODES.INTERNAL_SERVER_ERROR);
   }
 
   if (!churchId) {
-    throw createAppError("Church is required.", 400, ERROR_CODES.INVALID_CREDENTIALS);
+    throw createAppError("Failed to resolve church", 500, ERROR_CODES.INTERNAL_SERVER_ERROR);
   }
 
   const { rows } = await pool.query(

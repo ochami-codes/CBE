@@ -8,7 +8,7 @@ import { getFrontendRoles } from "./services/frontendRoles.js";
 
 export const ReusableController = {
   createChurch: createHandler(async (req) =>
-    ChurchService.createChurch({
+    ReusableService.createChurch({
       profileId: req.user.id,
       churchName: req.body.church_name,
       conferenceId: req.body.conference_id,
@@ -55,6 +55,18 @@ export const ReusableController = {
   getDepartments: getHandler(async (req) =>
     ReusableService.getDepartments({
       churchId: req.user.active_church_id,
+    })
+  ),
+   activateDepartment: createHandler(async (req) =>
+    ReusableService.activateDepartment({
+      churchId: req.user.active_church_id,
+      departmentId: req.params.departmentId,
+    })
+  ),
+   deactivateDepartment: createHandler(async (req) =>
+    ReusableService.deactivateDepartment({
+      churchId: req.user.active_church_id,
+      departmentId: req.params.departmentId,
     })
   ),
 

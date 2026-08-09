@@ -27,7 +27,7 @@ export async function getMyDepartmentAnnouncements({
     throw createAppError(
       "Church required.",
       400,
-      ERROR_CODES.INVALID_CREDENTIALS
+      ERROR_CODES.VALIDATION_ERROR
     );
   }
 

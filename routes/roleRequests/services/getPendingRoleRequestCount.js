@@ -6,7 +6,7 @@ import { ERROR_CODES } from "../../../errors/errorCodes.js";
 
 export async function getPendingRoleRequestCount(churchId) {
   if (!churchId) {
-    throw createAppError("Church is required.", 400, ERROR_CODES.INVALID_CREDENTIALS);
+    throw createAppError("Failed to resolve active church", 500, ERROR_CODES.INTERNAL_SERVER_ERROR);
   }
 
   const { rows } = await pool.query(

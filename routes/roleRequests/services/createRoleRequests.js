@@ -14,33 +14,104 @@ export async function createRoleRequests({
   requestedRole,
 }) {
   if (!memberId) {
-    throw createAppError("Member is required.", 400, ERROR_CODES.INVALID_CREDENTIALS);
+    throw createAppError(
+      "Failed to resolve member.",
+      500,
+      ERROR_CODES.INTERNAL_SERVER_ERROR
+    );
   }
 
   if (!churchId) {
-    throw createAppError("Church is required.", 400, ERROR_CODES.INVALID_CREDENTIALS);
+    throw createAppError(
+      "Failed to resolve active church.",
+      500,
+      ERROR_CODES.INTERNAL_SERVER_ERROR
+    );
   }
 
   if (!requestedRole) {
-    throw createAppError("Requested role is required.", 400, ERROR_CODES.INVALID_INPUT);
+    throw createAppError(
+      "Requested role is required.",
+      400,
+      ERROR_CODES.INVALID_INPUT
+    );
   }
 
   requestedRole = normalizeRole(requestedRole);
 
   if (!isValidRole(requestedRole)) {
-    throw createAppError("Invalid role.", 400, ERROR_CODES.INVALID_INPUT);
+    throw createAppError(
+      "Invalid role.",
+      400,
+      ERROR_CODES.INVALID_INPUT
+    );
   }
 
   if (!REQUESTABLE_ROLES.includes(requestedRole)) {
-    throw createAppError("You cannot request this role.", 403, ERROR_CODES.FORBIDDEN);
+    throw createAppError(
+      "You cannot request this role.",
+      403,
+      ERROR_CODES.FORBIDDEN
+    );
   }
-
+   
   const client = await pool.connect();
 
   try {
     await client.query("BEGIN");
 
-    const existing = await client.query(
+    /* -----------------------------------------
+       Check if member already has this role
+    ----------------------------------------- */
+
+    const existingRole = await client.query(
+      `
+      SELECT 1
+      FROM member_roles mr
+      JOIN roles r
+        ON r.id = mr.role_id
+      WHERE mr.member_id = $1
+        AND r.name = $2
+      LIMIT 1;
+      `,
+      [memberId, requestedRole]
+    );
+
+    if (existingRole.rowCount) {
+      throw createAppError(
+        "You already have this role.",
+        409,
+        ERROR_CODES.CONFLICT
+      );
+    }
+     
+   // BLOCK ADMIN Requests
+
+const adminRole = await client.query(
+  `
+  SELECT 1
+  FROM member_roles mr
+  JOIN roles r
+    ON r.id = mr.role_id
+  WHERE mr.member_id = $1
+    AND LOWER(r.name) = 'admin'
+  LIMIT 1
+  `,
+  [memberId]
+);
+
+if (adminRole.rows.length > 0) {
+  throw createAppError(
+    "Church administrators cannot request for roles.",
+    403,
+    ERROR_CODES.FORBIDDEN
+  );
+}
+    /* -----------------------------------------
+       Check for existing pending request
+    ----------------------------------------- */
+
+    const existingRequest = await client.query(
       `
       SELECT 1
       FROM role_requests
@@ -53,13 +124,17 @@ export async function createRoleRequests({
       [memberId, churchId, requestedRole]
     );
 
-    if (existing.rowCount) {
+    if (existingRequest.rowCount) {
       throw createAppError(
         "You already have a pending request for this role.",
         409,
         ERROR_CODES.CONFLICT
       );
     }
+
+    /* -----------------------------------------
+       Create role request
+    ----------------------------------------- */
 
     const { rows } = await client.query(
       `
@@ -83,6 +158,10 @@ export async function createRoleRequests({
     );
 
     const request = rows[0];
+
+    /* -----------------------------------------
+       Notify administrators
+    ----------------------------------------- */
 
     await notifyRoles({
       churchId,

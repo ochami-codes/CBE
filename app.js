@@ -3,6 +3,7 @@ import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import { userContext } from "./middleware/userContext.js";
+import { authorizeChurch } from "./middleware/authorizeChurch.js";
 import authRoutes from "./routes/auth/auth.routes.js";
 import adminRoutes from "./routes/admin/admin.routes.js";
 import membershipRoutes from "./routes/membership/membership.routes.js";
@@ -58,19 +59,19 @@ app.use((req, res, next) => {
 app.use("/auth", authRoutes);
 app.use("/reusables", userContext, reusableRoutes);
 app.use("/dashboard", userContext, dashboardRoutes);
-app.use("/announcements", userContext, announcementRoutes);
+app.use("/announcements", userContext,authorizeChurch, announcementRoutes);
 app.use("/notifications", userContext, notificationRoutes);
-app.use("/messages", userContext, messageRoutes);
+app.use("/messages", userContext, authorizeChurch, messageRoutes);
 app.use("/profile", userContext, profileRoutes);
 app.use("/membership-requests", userContext, membershipRoutes);
-app.use("/pastor", userContext, pastorRoutes);
-app.use("/members", userContext, memberRoutes);
-app.use("/attendance", userContext, attendanceRoutes);
-app.use("/clerk", userContext, clerkRoutes);
-app.use("/treasury", userContext, treasuryRoutes);
-app.use("/role-requests", userContext, roleRoutes);
-app.use("/sabbath-school", userContext, sabbathSchoolRoutes);
-app.use("/admin", userContext, adminRoutes);
+app.use("/pastor", userContext, authorizeChurch, pastorRoutes);
+app.use("/members", userContext, authorizeChurch, memberRoutes);
+app.use("/attendance", userContext, authorizeChurch, attendanceRoutes);
+app.use("/clerk", userContext, authorizeChurch, clerkRoutes);
+app.use("/treasury", userContext, authorizeChurch, treasuryRoutes);
+app.use("/role-requests", userContext, authorizeChurch, roleRoutes);
+app.use("/sabbath-school", userContext, authorizeChurch, sabbathSchoolRoutes);
+app.use("/admin", userContext, authorizeChurch, adminRoutes);
 
 
 app.use(errorHandler);

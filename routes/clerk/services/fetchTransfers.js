@@ -1,44 +1,50 @@
-import { pool } from "../../../db.js"
-export async function getSourceTransfersService(churchId) {
+import { pool } from "../../../db.js";
+
+export async function fetchTransfers(churchId) {
   const result = await pool.query(
     `
     SELECT
       t.id,
       t.member_id,
+      t.transfer_type,
       t.status,
       t.reason,
       t.created_at,
-      t.transfer_type,
+      t.external_church_name,
+      t.conference_id,
 
-      -- member info
+      /* member info */
       p.full_name AS member_name,
       p.phone,
-
-      -- churches
+      /* source church */
       sc.id AS source_church_id,
       sc.name AS source_church_name,
       sc.church_code AS source_church_code,
 
+      /* destination church */
       dc.id AS destination_church_id,
       dc.name AS destination_church_name,
       dc.church_code AS destination_church_code
 
     FROM transfers t
 
+    /* member */
     LEFT JOIN members m
       ON m.id = t.member_id
 
     LEFT JOIN profiles p
       ON p.id = m.profile_id
 
+    /* source church */
     LEFT JOIN churches sc
       ON sc.id = t.source_church_id
 
+    /* destination church */
     LEFT JOIN churches dc
       ON dc.id = t.destination_church_id
 
     WHERE t.source_church_id = $1
-      AND t.status = 'requested'
+       OR t.destination_church_id = $1
 
     ORDER BY t.created_at DESC
     `,

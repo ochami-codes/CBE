@@ -2,7 +2,7 @@
 import { supabaseAdmin } from "../../../supabaseClient.js";
 import { ERROR_CODES } from "../../../errors/errorCodes.js";
 import { createAppError } from "../../../errors/AppError.js";
-import { validateChangePasswordInput } from "../../../validators/auth/changePasswordValidator.js";
+import { validateChangePasswordInput } from "../../../utils/validators/auth/changePasswordValidator.js";
 
 export async function changePassword({
   authUserId,

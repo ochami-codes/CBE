@@ -13,15 +13,15 @@ export async function reviewMembershipRequest({
   action,
 }) {
   if (!requestId) {
-    throw createAppError("Request is required.", 400, ERROR_CODES.INVALID_CREDENTIALS);
+    throw createAppError("Request is required.", 400, ERROR_CODES.VALIDATION_ERROR);
   }
 
   if (!churchId) {
-    throw createAppError("Church is required.", 400, ERROR_CODES.INVALID_CREDENTIALS);
+    throw createAppError("Failed to resolve active church.", 500, ERROR_CODES.INTERNAL_SERVER_ERROR);
   }
 
   if (!reviewedBy) {
-    throw createAppError("Reviewer is required.", 400, ERROR_CODES.INVALID_CREDENTIALS);
+    throw createAppError("Failed to resolve reviewer.", 500, ERROR_CODES.INTERNAL_SERVER_ERROR);
   }
 
   if (!["approved", "rejected"].includes(action)) {

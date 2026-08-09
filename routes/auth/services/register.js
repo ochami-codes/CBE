@@ -5,7 +5,7 @@ import {
 
 import { pool } from "../../../db.js";
 
-import { validateRegisterInput } from "../../../validators/auth/registerValidator.js";
+import { validateRegisterInput } from "../../../utils/validators/auth/registerValidator.js";
 import { createAppError } from "../../../errors/AppError.js";
 import { ERROR_CODES } from "../../../errors/errorCodes.js";
 

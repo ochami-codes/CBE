@@ -1,30 +1,40 @@
 // middleware/loadMemberships.js
 
 import { supabaseAdmin } from "../supabaseClient.js";
-import { getUserPermissions } from "../config/roles.js";
+import {
+  getUserPermissions,
+  ROLES,
+} from "../config/roles.js";
 
-export async function loadMemberships(req, res, next) {
+export async function loadMemberships(
+  req,
+  res,
+  next
+) {
   try {
     const profileId = req.profile.id;
-    const activeChurchId = req.profile.active_church_id;
+    const activeChurchId =
+      req.profile.active_church_id;
 
     // -----------------------------------------
     // Load all churches the user belongs to
     // -----------------------------------------
 
-    const { data: memberships, error: membershipsError } =
-      await supabaseAdmin
-        .from("members")
-        .select(`
+    const {
+      data: memberships,
+      error: membershipsError,
+    } = await supabaseAdmin
+      .from("members")
+      .select(`
+        id,
+        church_id,
+        status,
+        churches (
           id,
-          church_id,
-          status,
-          churches (
-            id,
-            name
-          )
-        `)
-        .eq("profile_id", profileId);
+          name
+        )
+      `)
+      .eq("profile_id", profileId);
 
     if (membershipsError) {
       throw membershipsError;
@@ -34,22 +44,31 @@ export async function loadMemberships(req, res, next) {
     // Simple church list
     // -----------------------------------------
 
-    const churches = (memberships || [])
+    const churches = (memberships ?? [])
       .map((membership) => ({
-        id: membership.churches?.id,
-        name: membership.churches?.name,
-        status: membership.status,
+        id:
+          membership.churches?.id,
+
+        name:
+          membership.churches?.name,
+
+        status:
+          membership.status,
       }))
-      .filter((church) => church.id);
+      .filter(
+        (church) => church.id
+      );
 
     // -----------------------------------------
     // Find active church membership
     // -----------------------------------------
 
-    const activeMembership = (memberships || []).find(
-      (membership) =>
-        membership.church_id === activeChurchId
-    );
+    const activeMembership =
+      (memberships ?? []).find(
+        (membership) =>
+          membership.church_id ===
+          activeChurchId
+      );
 
     let activeChurch = null;
 
@@ -58,15 +77,21 @@ export async function loadMemberships(req, res, next) {
       // Load roles
       // -----------------------------------------
 
-      const { data: memberRoles, error: rolesError } =
-        await supabaseAdmin
-          .from("member_roles")
-          .select(`
-            roles (
-              name
-            )
-          `)
-          .eq("member_id", activeMembership.id);
+      const {
+        data: memberRoles,
+        error: rolesError,
+      } = await supabaseAdmin
+        .from("member_roles")
+        .select(`
+          roles (
+            id,
+            name
+          )
+        `)
+        .eq(
+          "member_id",
+          activeMembership.id
+        );
 
       if (rolesError) {
         throw rolesError;
@@ -87,7 +112,10 @@ export async function loadMemberships(req, res, next) {
             name
           )
         `)
-        .eq("member_id", activeMembership.id);
+        .eq(
+          "member_id",
+          activeMembership.id
+        );
 
       if (departmentsError) {
         throw departmentsError;
@@ -98,37 +126,75 @@ export async function loadMemberships(req, res, next) {
       // -----------------------------------------
 
       const roles = [
-        ...new Set(
-          (memberRoles || [])
-            .map((item) => item.roles?.name)
+        ...new Map(
+          (memberRoles ?? [])
+            .map((item) => {
+              const role =
+                item.roles;
+
+              if (!role?.id || !role?.name) {
+                return null;
+              }
+
+              return [
+                role.id,
+                {
+                  id: role.id,
+                  name: role.name,
+                  label:
+                    ROLES[
+                      role.name
+                    ]?.label ??
+                    role.name,
+                },
+              ];
+            })
             .filter(Boolean)
-        ),
+        ).values(),
       ];
 
       // -----------------------------------------
-      // Resolve permissions from roles
+      // Extract role names for authorization
+      // -----------------------------------------
+
+      const roleNames =
+        roles.map(
+          (role) => role.name
+        );
+
+      // -----------------------------------------
+      // Resolve permissions from role names
       // -----------------------------------------
 
       const permissions =
-        getUserPermissions(roles);
+        getUserPermissions(
+          roleNames
+        );
 
       // -----------------------------------------
       // Normalize departments
       // -----------------------------------------
 
-      const departments = (memberDepartments || [])
-        .map((item) => item.departments)
-        .filter(Boolean);
+      const departments =
+        (memberDepartments ?? [])
+          .map(
+            (item) =>
+              item.departments
+          )
+          .filter(Boolean);
 
       // -----------------------------------------
       // Build active church context
       // -----------------------------------------
 
       activeChurch = {
-        id: activeMembership.church_id,
+        id:
+          activeMembership.church_id,
 
         name:
-          activeMembership.churches?.name ?? null,
+          activeMembership
+            .churches?.name ??
+          null,
 
         membershipId:
           activeMembership.id,
@@ -161,7 +227,8 @@ export async function loadMemberships(req, res, next) {
     );
 
     return res.status(500).json({
-      message: "Membership error",
+      message:
+        "Membership error",
     });
   }
 }

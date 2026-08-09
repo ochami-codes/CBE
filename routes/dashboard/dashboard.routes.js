@@ -1,6 +1,7 @@
 import express from "express";
 import { DashboardController } from "./dashboard.controller.js";
 import { authorize } from "../../middleware/authorize.js";
+import { authorizeChurch } from "../../middleware/authorizeChurch.js";
 const router = express.Router();
 
 router.get(
@@ -21,11 +22,13 @@ router.get(
 
 router.get(
   "/birthdays/today",
+  authorizeChurch,
   DashboardController.getTodaysBirthdays
 );
 
 router.get(
   "/birthdays/upcoming",
+  authorizeChurch,
   DashboardController.getUpcomingBirthdays
 );
 

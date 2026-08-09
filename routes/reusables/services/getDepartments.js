@@ -8,7 +8,11 @@ export async function getDepartments({
   churchId,
 }) {
   if (!churchId) {
-    throw createAppError("Church is required.", 400, ERROR_CODES.INVALID_CREDENTIALS);
+    throw createAppError(
+      "Failed to resolve active church.",
+      500,
+      ERROR_CODES.INTERNAL_SERVER_ERROR
+    );
   }
 
   const { rows } = await pool.query(
@@ -17,10 +21,11 @@ export async function getDepartments({
       id,
       name,
       code,
-      type
+      is_active,
+      is_system
     FROM departments
     WHERE church_id = $1
-    ORDER BY name;
+    ORDER BY is_system DESC, name ASC;
     `,
     [churchId]
   );

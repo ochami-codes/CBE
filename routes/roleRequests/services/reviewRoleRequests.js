@@ -11,7 +11,7 @@ export async function reviewRoleRequest({
   action,
 }) {
   if (!requestId) {
-    throw createAppError("Request is required.", 400, ERROR_CODES.INVALID_CREDENTIALS);
+    throw createAppError("Request is required.", 400, ERROR_CODES.VALIDATION_ERROR);
   }
 
   if (!reviewerProfileId) {

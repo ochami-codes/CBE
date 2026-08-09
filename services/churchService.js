@@ -10,10 +10,10 @@ import { setupChurchTreasury } from "../routes/church/setup/setUpTreasury.js";
 
 export async function getOrCreateChurch({
   client,
-  church_name,
-  conference_id,
+  churchName,
+  conferenceId,
 }) {
-  const baseName = sanitizeChurchBaseName(church_name);
+  const baseName = sanitizeChurchBaseName(churchName);
   const finalName = buildFullChurchName(baseName);
   const churchCode = generateChurchCode(baseName);
 
@@ -25,7 +25,7 @@ export async function getOrCreateChurch({
       AND conference_id = $2
     LIMIT 1
     `,
-    [churchCode, conference_id]
+    [churchCode, conferenceId]
   );
 
   if (rows[0]) {
@@ -42,7 +42,7 @@ export async function getOrCreateChurch({
     VALUES ($1, $2, $3)
     RETURNING *
     `,
-    [finalName, churchCode, conference_id]
+    [finalName, churchCode, conferenceId]
   );
 
   const church = insertRes.rows[0];

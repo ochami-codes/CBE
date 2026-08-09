@@ -1,11 +1,11 @@
 import {
   normalizeKenyanPhone,
   isValidKenyanPhone,
-} from "../../utils/phone.js";
+} from "../../validators/phone.js";
 
-import { toNameCase } from "../../utils/formatters.js";
-import { createAppError } from "../../errors/AppError.js";
-import { ERROR_CODES } from "../../errors/errorCodes.js";
+import { toNameCase } from "../../formatters.js";
+import { createAppError } from "../../../errors/AppError.js";
+import { ERROR_CODES } from "../../../errors/errorCodes.js";
 
 export function validateRegisterInput({
   full_name,

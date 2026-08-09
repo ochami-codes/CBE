@@ -37,10 +37,10 @@ export function buildUserContext(req, res, next) {
     active_church: activeChurch,
 
     active_church_id:
-      activeChurch?.id ?? null,
+      req.profile.active_church_id ?? null,
 
     active_church_name:
-      activeChurch?.name ?? null,
+      req.profile.active_church_name ?? null,
 
     // -----------------------------------------
     // Active membership

@@ -1,5 +1,5 @@
 import { pool } from "../../../db.js";
-export async function getTransferHistoryService(churchId) {
+export async function getTransferHistory(churchId) {
   const result = await pool.query(
     `
     SELECT

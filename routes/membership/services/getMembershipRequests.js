@@ -10,7 +10,7 @@ export async function getMembershipRequests({
   source = "user_request",
 }) {
   if (!churchId) {
-    throw createAppError("Church is required.", 400, ERROR_CODES.INVALID_CREDENTIALS);
+    throw createAppError("Failed to resolve authenticated church", 500, ERROR_CODES.INTERNAL_SERVER_ERROR);
   }
 
   const values = [churchId];
