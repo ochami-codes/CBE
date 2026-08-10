@@ -48,6 +48,11 @@ router.post(
   authorizeDepartment("manage_dept_announcements"),
   AnnouncementController.createDepartmentAnnouncement
 );
+router.get(
+  "/departments/:departmentId",
+authorizeDepartment("manage_dept_announcements"),
+AnnouncementController.getDepartmentAnnouncements
+);
 
 // Department leader only
 router.delete(

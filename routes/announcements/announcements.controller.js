@@ -13,6 +13,14 @@ export const AnnouncementController = {
         limit: req.query.limit,
       }),
   })),
+  getDepartmentAnnouncements: getHandler(async (req) => ({
+    announcements:
+  await AnnouncementService.getDepartmentAnnouncements({
+    churchId: req.user.active_church_id,
+    departmentId: req.params.departmentId,
+    limit: req.query.limit,
+  })
+})),
   getMyDepartmentAnnouncements: getHandler(async (req) => ({
     announcements:
       await AnnouncementService.getMyDepartmentAnnouncements({
@@ -24,29 +32,21 @@ export const AnnouncementController = {
   })),
 
   createChurchAnnouncement: createHandler(async (req) =>
-    AnnouncementService.createAnnouncement({
+    AnnouncementService.createChurchAnnouncement({
       churchId: req.user.active_church_id,
       createdBy: req.user.id,
       payload: req.body,
     })
   ),
   createDepartmentAnnouncement: createHandler(async (req) =>
-    AnnouncementService.createAnnouncement({
+    AnnouncementService.createDepartmentAnnouncement({
       churchId: req.user.active_church_id,
-      departmentId: req.user.params,
+      departmentId: req.params.departmentId,
       createdBy: req.user.id,
       payload: req.body,
     })
   ),
 
-  deleteChurchAnnouncement: deleteHandler(
-    "Announcement deleted."
-  )(async (req) =>
-    AnnouncementService.deleteAnnouncement({
-      churchId: req.user.active_church_id,
-      announcementId: req.params.announcementId,
-    })
-  ),
   deleteChurchAnnouncement: deleteHandler(
     "Announcement deleted."
   )(async (req) =>
