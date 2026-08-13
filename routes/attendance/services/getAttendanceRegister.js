@@ -22,10 +22,10 @@ export async function getAttendanceRegister({
       p.full_name AS member_name,
       c.full_name AS child_name
 
-    FROM attendance_sessions s
+    FROM attendance a
 
-    JOIN attendance a
-      ON a.session_id = s.id
+    JOIN attendance_sessions s
+      ON s.id = a.session_id
 
     LEFT JOIN members m
       ON m.id = a.member_id
@@ -57,12 +57,14 @@ export async function getAttendanceRegister({
   return rows.map((record) => ({
     id: record.id,
 
-    sessionId: record.session_id,
+    sessionId:
+      record.session_id,
 
     attendanceDate:
       record.attendance_date,
 
-    title: record.title,
+    title:
+      record.title,
 
     serviceType:
       record.service_type,
@@ -84,6 +86,6 @@ export async function getAttendanceRegister({
       record.status === "present",
 
     remarks:
-      record.remarks,
+      record.remarks ?? "",
   }));
 }

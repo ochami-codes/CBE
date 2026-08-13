@@ -21,10 +21,13 @@ export const asyncHandler = (handler) => {
  * as a JSON response.
  */
 export const respond =
-  ({ status = 200, transform = (result) => result } = {}) =>
+  ({
+    status = 200,
+    transform = (result) => result,
+  } = {}) =>
   (service) =>
     asyncHandler(async (req, res) => {
-      const result = await service(req);
+      const result = await service(req, res);
 
       return res
         .status(status)
@@ -51,9 +54,8 @@ export const updateHandler = respond();
 /**
  * DELETE response.
  */
-export const deleteHandler = (
-  message = "Deleted successfully."
-) =>
+export const deleteHandler =
+  (message = "Deleted successfully.") =>
   respond({
     transform: () => ({
       success: true,
