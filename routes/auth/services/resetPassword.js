@@ -1,11 +1,10 @@
 import { ERROR_CODES } from "../../../errors/errorCodes.js";
-import { supabaseAdmin } from "../../../supabaseClient.js";
+import { supabaseAuth } from "../../../supabaseClient.js";
 import { createAppError } from "../../../errors/AppError.js";
+
 import { validateResetPasswordInput } from "../../../utils/validators/auth/resetPasswordValidator.js";
 
-export async function resetPassword({
-  email,
-}) {
+export async function resetPassword({ email }) {
   const { email: normalizedEmail } =
     validateResetPasswordInput({
       email,
@@ -13,7 +12,7 @@ export async function resetPassword({
 
   try {
     const { error } =
-      await supabaseAdmin.auth.resetPasswordForEmail(
+      await supabaseAuth.auth.resetPasswordForEmail(
         normalizedEmail,
         {
           redirectTo:
@@ -21,7 +20,9 @@ export async function resetPassword({
         }
       );
 
-    // Prevent email enumeration
+    /*
+     * Never reveal whether the email exists.
+     */
     if (error) {
       console.error(
         "Reset password:",

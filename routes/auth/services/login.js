@@ -40,11 +40,10 @@ export async function login({
   const {
     data,
     error,
-  } =
-    await supabaseAuth.auth.signInWithPassword({
-      email,
-      password,
-    });
+  } = await supabaseAuth.auth.signInWithPassword({
+    email,
+    password,
+  });
 
   if (error) {
     throw mapSupabaseAuthError(error);
@@ -54,10 +53,7 @@ export async function login({
      Validate Auth Response
   ------------------------------ */
 
-  if (
-    !data?.user ||
-    !data?.session
-  ) {
+  if (!data?.user || !data?.session) {
     throw createAppError(
       "Authentication service returned an invalid response.",
       502,
@@ -89,28 +85,20 @@ export async function login({
   const {
     data: profile,
     error: profileError,
-  } =
-    await supabaseAdmin
-      .from("profiles")
-      .select(`
-        id,
-        auth_user_id,
-        full_name,
-        email,
-        active_church_id
-      `)
-      .eq("auth_user_id", user.id)
-      .single();
+  } = await supabaseAdmin
+    .from("profiles")
+    .select(`
+      id,
+      auth_user_id,
+      full_name,
+      email,
+      active_church_id
+    `)
+    .eq("auth_user_id", user.id)
+    .single();
 
   if (profileError) {
-    /*
-     * PGRST116 is handled here because
-     * "not found" has domain-specific
-     * meaning for the profile.
-     */
-    if (
-      profileError.code === "PGRST116"
-    ) {
+    if (profileError.code === "PGRST116") {
       throw createAppError(
         "Profile not found.",
         404,
@@ -118,9 +106,7 @@ export async function login({
       );
     }
 
-    throw mapSupabaseDatabaseError(
-      profileError
-    );
+    throw mapSupabaseDatabaseError(profileError);
   }
 
   if (!profile) {
@@ -136,12 +122,12 @@ export async function login({
   ------------------------------ */
 
   return {
-    access_token:
-      session.access_token,
-
-    refresh_token:
-      session.refresh_token,
-
     user: profile,
+
+    session: {
+      accessToken: session.access_token,
+      refreshToken: session.refresh_token,
+      expiresAt: session.expires_at,
+    },
   };
 }

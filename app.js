@@ -2,6 +2,7 @@
 import "dotenv/config";
 import express from "express";
 import cors from "cors";
+import cookieParser from "cookie-parser";
 import { userContext } from "./middleware/userContext.js";
 import { authorizeChurch } from "./middleware/authorizeChurch.js";
 import authRoutes from "./routes/auth/auth.routes.js";
@@ -26,6 +27,7 @@ import { errorHandler } from "./errors/errorHandler.js";
 const app = express();
 
 /* ----------------- Global middleware ------------------ */
+
 const allowedOrigins = [
   "http://localhost:5173",
   "https://cms-ian-ochami-s-projects.vercel.app",
@@ -33,7 +35,11 @@ const allowedOrigins = [
 
 const corsOptions = {
   origin: (origin, callback) => {
-    if (!origin) return callback(null, true);
+    // Allow requests without an Origin header
+    // (e.g. server-to-server requests)
+    if (!origin) {
+      return callback(null, true);
+    }
 
     if (allowedOrigins.includes(origin)) {
       return callback(null, true);
@@ -41,14 +47,28 @@ const corsOptions = {
 
     return callback(null, false);
   },
+
+  // Required for cookies
   credentials: true,
-  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"],
+
+  methods: [
+    "GET",
+    "POST",
+    "PUT",
+    "PATCH",
+    "DELETE",
+    "OPTIONS",
+  ],
+
+  allowedHeaders: [
+    "Content-Type",
+  ],
 };
 
 app.use(cors(corsOptions));
 
 app.use(express.json());
+app.use(cookieParser());
 
 /* ------------------ Attach Supabase ------------------ */
 app.use((req, res, next) => {

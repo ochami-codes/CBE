@@ -16,7 +16,7 @@ export async function getLastAttendance({
     values.push(attendanceDate);
 
     dateFilter = `
-      AND s.attendance_date < $${values.length}
+      AND s.attendance_date < $3
     `;
   }
 
@@ -37,10 +37,10 @@ export async function getLastAttendance({
       p.full_name AS member_name,
       c.full_name AS child_name
 
-    FROM attendance_sessions s
+    FROM attendance a
 
-    JOIN attendance a
-      ON a.session_id = s.id
+    JOIN attendance_sessions s
+      ON s.id = a.session_id
 
     LEFT JOIN members m
       ON m.id = a.member_id
@@ -52,18 +52,17 @@ export async function getLastAttendance({
       ON c.id = a.child_id
 
     WHERE
-      s.church_id = $1
-      AND s.department_id = $2
-
-      ${dateFilter}
-
-      AND s.id = (
+      s.id = (
         SELECT id
         FROM attendance_sessions
         WHERE
           church_id = $1
           AND department_id = $2
-          ${dateFilter}
+          ${
+            attendanceDate
+              ? "AND attendance_date < $3"
+              : ""
+          }
         ORDER BY attendance_date DESC
         LIMIT 1
       )
@@ -80,12 +79,14 @@ export async function getLastAttendance({
   return rows.map((record) => ({
     id: record.id,
 
-    sessionId: record.session_id,
+    sessionId:
+      record.session_id,
 
     attendanceDate:
       record.attendance_date,
 
-    title: record.title,
+    title:
+      record.title,
 
     serviceType:
       record.service_type,
@@ -107,6 +108,6 @@ export async function getLastAttendance({
       record.status === "present",
 
     remarks:
-      record.remarks,
+      record.remarks ?? "",
   }));
 }
