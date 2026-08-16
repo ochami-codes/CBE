@@ -1,17 +1,22 @@
 import { pool } from "../../../db.js";
 import { validateSendMessageInput } from "../../../utils/validators/messages/messageValidator.js";
+import { verifyThreadAccess } from "./verifyThreadAccess.js";
+import { insertMessage } from "./insertMessage.js";
+import { updateThreadAfterMessage } from "./updateThreadAfterMessage.js";
+import { getOrCreateDirectThread } from "./getOrCreateDirectThread.js";
 
-export async function sendMessage({
+/**
+ * Reply inside an existing thread.
+ */
+export async function replyToThread({
   senderId,
   churchId,
   content,
-  recipientProfileId,
   threadId,
 }) {
   validateSendMessageInput({
     churchId,
     content,
-    recipientProfileId,
     threadId,
   });
 
@@ -20,84 +25,99 @@ export async function sendMessage({
   try {
     await client.query("BEGIN");
 
-    let finalThreadId = threadId;
+    await verifyThreadAccess({
+      client,
+      threadId,
+      userId: senderId,
+      churchId,
+    });
 
-    if (!finalThreadId) {
-      finalThreadId =
-        await getOrCreateDirectThread({
-          client,
-          churchId,
-          senderId,
-          recipientId: recipientProfileId,
-        });
-    }
+    const message = await insertMessage({
+      client,
+      threadId,
+      senderId,
+      content,
+    });
 
-    const { rows } = await client.query(
-      `
-      INSERT INTO messages (
-        thread_id,
-        sender_id,
-        content
-      )
-      VALUES ($1, $2, $3)
-      RETURNING
-        id,
-        created_at
-      `,
-      [
-        finalThreadId,
-        senderId,
-        content.trim(),
-      ]
-    );
-
-    const message = rows[0];
-
-    await client.query(
-      `
-      INSERT INTO thread_reads (
-        thread_id,
-        user_id,
-        last_read_at
-      )
-      VALUES (
-        $1,
-        $2,
-        NOW()
-      )
-      ON CONFLICT (
-        thread_id,
-        user_id
-      )
-      DO UPDATE
-      SET last_read_at = NOW()
-      `,
-      [
-        finalThreadId,
-        senderId,
-      ]
-    );
-
-    await client.query(
-      `
-      UPDATE threads
-      SET
-        last_message_id = $1,
-        last_message_at = $2
-      WHERE id = $3
-      `,
-      [
-        message.id,
-        message.created_at,
-        finalThreadId,
-      ]
-    );
+    await updateThreadAfterMessage({
+      client,
+      threadId,
+      message,
+      senderId,
+    });
 
     await client.query("COMMIT");
 
     return {
+      message: {
+        id: message.id,
+        content: message.content,
+        sender_id: message.sender_id,
+        created_at: message.created_at,
+      },
       messageId: message.id,
-      threadId: finalThreadId,
+      threadId,
+    };
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * Start a new direct conversation.
+ */
+export async function sendNewMessage({
+  senderId,
+  churchId,
+  content,
+  recipientProfileId,
+}) {
+  validateSendMessageInput({
+    churchId,
+    content,
+    recipientProfileId,
+  });
+
+  const client = await pool.connect();
+
+  try {
+    await client.query("BEGIN");
+
+    const threadId = await getOrCreateDirectThread({
+      client,
+      churchId,
+      senderId,
+      recipientId: recipientProfileId,
+    });
+
+    const message = await insertMessage({
+      client,
+      threadId,
+      senderId,
+      content,
+    });
+
+    await updateThreadAfterMessage({
+      client,
+      threadId,
+      message,
+      senderId,
+    });
+
+    await client.query("COMMIT");
+
+    return {
+      message: {
+        id: message.id,
+        content: message.content,
+        sender_id: message.sender_id,
+        created_at: message.created_at,
+      },
+      messageId: message.id,
+      threadId,
     };
   } catch (err) {
     await client.query("ROLLBACK");

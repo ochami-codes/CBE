@@ -7,13 +7,29 @@ import {
 } from "../../utils/controller.js";
 
 export const MessageController = {
-  sendMessage: createHandler(async (req) =>
-    MessageService.sendMessage({
+  sendMessage: createHandler(async (req) => {
+  const {
+    thread_id,
+    recipient_profile_id,
+    content,
+  } = req.body;
+
+  if (thread_id) {
+    return MessageService.replyToThread({
       senderId: req.user.id,
       churchId: req.user.active_church_id,
-      ...req.body,
-    })
-  ),
+      threadId: thread_id,
+      content,
+    });
+  }
+
+  return MessageService.sendNewMessage({
+    senderId: req.user.id,
+    churchId: req.user.active_church_id,
+    recipientProfileId: recipient_profile_id,
+    content,
+  });
+}),
 
   getInbox: getHandler(async (req) => ({
     inbox: await MessageService.getInbox({
@@ -53,7 +69,7 @@ export const MessageController = {
   getThreadWithUser: getHandler(async (req) =>
     MessageService.getThreadWithUser({
       profileId: req.user.id,
-      otherProfileId: req.params.user_id,
+      otherProfileId: req.params.userId,
     })
   ),
 };

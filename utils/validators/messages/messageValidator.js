@@ -25,7 +25,15 @@ export function validateSendMessageInput({
 
   if (!recipientProfileId && !threadId) {
     throw createAppError(
-      "Recipient is required.",
+      "Recipient or thread is required.",
+      400,
+      ERROR_CODES.INVALID_INPUT
+    );
+  }
+
+  if (recipientProfileId && threadId) {
+    throw createAppError(
+      "Provide either a recipient or a thread, not both.",
       400,
       ERROR_CODES.INVALID_INPUT
     );

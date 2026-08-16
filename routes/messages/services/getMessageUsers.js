@@ -1,7 +1,7 @@
 import { pool } from "../../../db.js";
 import { createAppError } from "../../../errors/AppError.js";
 import { ERROR_CODES } from "../../../errors/errorCodes.js";
-
+import { getRoleLabel } from "../../../config/roles.js";
 export async function getMessageUsers({
   churchId,
   profileId,
@@ -45,44 +45,47 @@ export async function getMessageUsers({
 
   const groups = new Map();
 
-  for (const row of rows) {
-    const role = row.role;
+for (const row of rows) {
+  const isLeader = Boolean(row.role);
 
-    const key = role ?? "members";
+  const key = isLeader
+    ? `role:${row.role}`
+    : "members";
 
-    if (!groups.has(key)) {
-      groups.set(key, {
-        type: role ? "role" : "members",
-        role,
-        users: [],
-      });
-    }
-
-    const group = groups.get(key);
-
-    if (
-      !group.users.some(
-        (u) => u.id === row.profile_id
-      )
-    ) {
-      group.users.push({
-        id: row.profile_id,
-        name: row.full_name,
-      });
-    }
+  if (!groups.has(key)) {
+    groups.set(key, {
+      type: isLeader ? "leaders" : "members",
+      role: row.role,
+      role_label: row.role
+        ? getRoleLabel(row.role)
+        : null,
+      users: [],
+    });
   }
 
-  return [...groups.values()].sort((a, b) => {
-    if (a.type === "role" && b.type === "members") {
-      return -1;
-    }
-
-    if (a.type === "members" && b.type === "role") {
-      return 1;
-    }
-
-    return (a.role ?? "").localeCompare(
-      b.role ?? ""
-    );
+  groups.get(key).users.push({
+    id: row.profile_id,
+    full_name: row.full_name,
   });
+}
+
+return [...groups.values()].sort((a, b) => {
+  if (
+    a.type === "leaders" &&
+    b.type === "members"
+  ) {
+    return -1;
+  }
+
+  if (
+    a.type === "members" &&
+    b.type === "leaders"
+  ) {
+    return 1;
+  }
+
+  return (a.role_label ?? "").localeCompare(
+    b.role_label ?? ""
+  );
+});
 }

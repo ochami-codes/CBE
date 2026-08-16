@@ -9,6 +9,6 @@ router.get("/conversation/:thread_id", MessageController.getConversation);
 router.post("/read", MessageController.markThreadAsRead);
 router.get("/users", MessageController.getMessageUsers);
 router.get("/unread-count", MessageController.getUnreadCount);
-router.get("/thread-with/user_id", MessageController.getThreadWithUser);
+router.get("/thread-with/:userId", MessageController.getThreadWithUser);
 
 export default router;

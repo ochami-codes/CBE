@@ -34,6 +34,7 @@ export async function getNotifications({
     WHERE
       user_id = $1
       AND church_id = $2
+      AND is_read = false
     `,
     [profileId, churchId]
   );
@@ -53,6 +54,7 @@ export async function getNotifications({
     WHERE
       user_id = $1
       AND church_id = $2
+      AND is_read = false
     ORDER BY
       created_at DESC
     LIMIT $3
